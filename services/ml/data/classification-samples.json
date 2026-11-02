@@ -1,0 +1,11 @@
+[
+  {"text": "My laptop keyboard is broken", "category": "hardware"},
+  {"text": "Please install the software update", "category": "software"},
+  {"text": "The wifi network is down", "category": "network"},
+  {"text": "The SQL database query is slow", "category": "database"},
+  {"text": "Our AWS cloud instance is unavailable", "category": "cloud"},
+  {"text": "A phishing email contains malware", "category": "security"},
+  {"text": "My login password was rejected", "category": "authentication"},
+  {"text": "The application page crashes", "category": "application"},
+  {"text": "The disk has no storage space", "category": "storage"}
+]

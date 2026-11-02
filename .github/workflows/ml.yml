@@ -1,0 +1,27 @@
+name: Intelligence service
+on:
+  push:
+    paths: ["services/ml/**"]
+  pull_request:
+    paths: ["services/ml/**"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.23"
+          enable-cache: true
+          cache-dependency-glob: services/ml/uv.lock
+      - run: uv python install 3.12
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run mypy src tests
+      - run: uv run pytest
+      - run: docker build -t itsm-ml .
