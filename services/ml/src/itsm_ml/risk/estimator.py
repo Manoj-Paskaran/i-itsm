@@ -35,6 +35,8 @@ class RiskEstimatorChain(RiskEstimator):
         self.fallback = fallback or RuleBasedRiskEstimator()
 
     def predict(self, incident: RiskRequest) -> RiskPrediction:
+        if incident.minutes_to_deadline <= 0:
+            return RiskPrediction(probability=1.0, level="high", source="rules")
         if self.model is not None:
             try:
                 return self.model.predict(incident)

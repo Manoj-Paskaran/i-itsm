@@ -98,6 +98,7 @@ class IncidentDraft(ContractModel):
 
 
 class IntakeResponse(ContractModel):
+    engine: Literal["gemini", "rules"] = "rules"
     draft: IncidentDraft
     missing_fields: list[str]
     reply: str
@@ -120,6 +121,7 @@ class ReportRequest(ContractModel):
 
 
 class ReportResponse(ContractModel):
+    engine: Literal["gemini", "rules"] = "rules"
     markdown: str
 
 

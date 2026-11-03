@@ -21,6 +21,7 @@ WORKDIR /app
 COPY --from=builder --chown=itsm:itsm /app/.venv /app/.venv
 COPY --from=builder --chown=itsm:itsm /app/model-cache /app/model-cache
 RUN mkdir /app/artifacts && chown itsm:itsm /app/artifacts
+COPY --chown=itsm:itsm artifacts/ /app/artifacts/
 ENV FASTEMBED_CACHE_PATH=/app/model-cache EMBEDDING_LOCAL_ONLY=true
 ENV PATH="/app/.venv/bin:$PATH" PORT=8001 ARTIFACTS_DIR=/app/artifacts
 USER itsm

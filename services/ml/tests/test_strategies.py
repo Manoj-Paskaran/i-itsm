@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Literal
 
 import pytest
 from pydantic import ValidationError
@@ -49,8 +50,8 @@ def test_risk_chain_falls_back_on_model_failure() -> None:
         category="network",
         service="payments",
         reassignment_count=0,
-        minutes_open=0,
-        minutes_to_deadline=0,
+        minutes_open=10,
+        minutes_to_deadline=1,
     )
     result = RiskEstimatorChain(model=BrokenRiskEstimator()).predict(request)
     assert result.source == "rules"
@@ -117,3 +118,42 @@ def test_risk_uses_actual_thirty_minute_window() -> None:
             minutes_to_deadline=remaining,
         )
         assert RuleBasedRiskEstimator().predict(req).level == expected
+
+
+class FixedClassifier(CategoryClassifier):
+    def __init__(self, source: Literal["model", "gemini", "rules"]) -> None:
+        self.result = Prediction(
+            category="application", confidence=0.3, candidates=[], source=source
+        )
+
+    def predict(self, text: str, allowed: Sequence[str] | None = None) -> Prediction:
+        return self.result
+
+
+def test_keeps_low_confidence_model_answer_when_gemini_fails() -> None:
+    model = FixedClassifier("model")
+    assert (
+        ClassifierChain(model=model, gemini=BrokenClassifier()).predict("payment") == model.result
+    )
+
+
+def test_keeps_low_confidence_model_answer_without_gemini() -> None:
+    model = FixedClassifier("model")
+    assert ClassifierChain(model=model).predict("payment") == model.result
+
+
+def test_prefers_keyword_rules_over_low_confidence_model_when_keywords_match() -> None:
+    assert ClassifierChain(model=FixedClassifier("model")).predict("wifi").source == "rules"
+
+
+def test_uses_gemini_when_model_below_threshold() -> None:
+    assert (
+        ClassifierChain(model=FixedClassifier("model"), gemini=FixedClassifier("gemini"))
+        .predict("payment")
+        .source
+        == "gemini"
+    )
+
+
+def test_falls_back_to_rules_when_model_raises() -> None:
+    assert ClassifierChain(model=BrokenClassifier()).predict("payment").source == "rules"

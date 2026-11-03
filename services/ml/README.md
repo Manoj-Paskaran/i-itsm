@@ -1,7 +1,7 @@
-# I-ITSM intelligence service (T01)
+# I-ITSM intelligence service
 
 Foundation for SCOPE **ML-1** and **AI-1**, Python 3.12, FastAPI and uv.
-No API key, database, trained model, or downloaded embedding model is required.
+Core rule fallbacks require no API key, database or trained artifacts. Embeddings use a cached local model.
 All exact dependency versions are recorded in `uv.lock`.
 
 ## Development
@@ -21,7 +21,7 @@ Health reports loaded model state and whether a Gemini key is configured.
 `uv run itsm-ml` also starts the service and honors `PORT` (default 8001).
 Configuration comes from process environment or a local `.env` (never commit it):
 `GEMINI_API_KEY` (optional), `GEMINI_MODEL` (empty by default),
-`EMBEDDING_MODEL` (`BAAI/bge-small-en-v1.5`, 384 dimensions for future work),
+`EMBEDDING_MODEL` (`BAAI/bge-small-en-v1.5`, 384 dimensions),
 `ARTIFACTS_DIR` (`artifacts`), `PORT` (`8001`). Embedding model changes will require re-embedding.
 In restricted cloud environments, use a writable `UV_CACHE_DIR`, for example `/workspace/.cache/uv`.
 
@@ -38,16 +38,18 @@ Errors use `{ "error": { "code": "...", "message": "..." } }`, including validat
   Empty lists are rejected. Case-insensitive whole-word hits are normalized into
   scores; no hits produce a uniform distribution with stable input-order tie breaking.
   These are heuristic scores, not calibrated probabilities. `ClassifierChain`
-  tries an injected model then rule fallback; the model slot is empty in T01.
+  tries the saved model, then configured Gemini for uncertain predictions, then rules.
 - `POST /v1/sla-risk`: `RiskEstimatorChain` uses the same model-to-rules pattern.
-  Risk is the fraction of the actual SLA window already elapsed:
+  A saved calibrated model runs first. The fallback risk is the fraction of the actual SLA window already elapsed:
   `minutesOpen / (minutesOpen + minutesToDeadline)`. At 75% the risk is high;
   at 50% it is medium; below that it is low. Already breached or zero windows
   yield probability 1 and high risk. These are rules, not calibrated predictions.
-- `POST /v1/embed`, `/v1/intake`, `/v1/post-incident-report`: validate full request
-  shape and return 501 `NOT_IMPLEMENTED`, as required by T01. Invalid inputs return
-  422 `VALIDATION_ERROR` before the stub executes. Incident fields remain an open
-  object because contract v1 deliberately leaves their structure unspecified.
+- `POST /v1/embed`: returns normalised vectors; see T41 below.
+- `POST /v1/intake`: produces a draft and follow-up questions from the complete
+  conversation, with `engine: "gemini"|"rules"`. No incident is submitted.
+- `POST /v1/post-incident-report`: produces Markdown from supplied facts, with
+  `engine: "gemini"|"rules"`. Incident fields remain an open object per contract v1.
+  Invalid requests return 422 `VALIDATION_ERROR`.
 
 ```sh
 curl -fsS http://localhost:8001/health
@@ -75,8 +77,7 @@ docker build --secret id=proxy_ca,src=/etc/ssl/certs/ca-certificates.crt -t itsm
 `data/classification-samples.json` contains nine synthetic examples used by tests.
 Put untracked raw datasets in `data/raw/`; trained artifacts belong in `artifacts/`,
 with experiments ignored by the root `.gitignore`. No training runs or AI calls
-occur during startup. Next tasks: T40 classifier, T41 embeddings, T42 risk model,
-T43 Gemini intake. The API integrates through `IntelligencePort` in T44.
+occur during startup. The API integrates through `IntelligencePort` in T44.
 
 ## Embeddings (T41)
 
@@ -88,3 +89,55 @@ downloads. Docker preloads the model and runs in local-only mode.
 and requests `EMBEDDING_DIM` (384 by default). Incompatible output fails with 503;
 providers never silently mix dimensions. Run `uv run pytest --run-slow tests/test_embeddings.py`
 for the downloaded-model paraphrase test. Default tests use fakes and no network.
+
+## Classification training (T40)
+
+Install tools using `uv sync --locked --group train`. Run
+`uv run python scripts/fetch_data.py tickets`, `uv run python scripts/generate_synthetic.py`,
+then `uv run --group train python scripts/train_classifier.py`. MLflow uses the ignored
+local SQLite store `mlruns/tracking.db`. See `data/README.md` for provenance/mappings
+and the ML evaluation section of the project report (`docs/report.pdf`) for measured results.
+The service loads the saved artifact without training. Low confidence (default
+`CLASSIFIER_CONFIDENCE_THRESHOLD=0.55`) falls through to Gemini when configured,
+then keyword rules. Custom allowed categories still work through fallbacks.
+Optional `uv run python scripts/generate_gemini.py` caches a top-up in at most
+nine calls; missing credentials/model report BLOCKED. No key was available.
+
+## SLA risk training (T42)
+
+Run `uv run python scripts/fetch_data.py uci`, then
+`uv run --group train python scripts/train_risk.py`. Snapshot features exclude
+closure fields. Eventual incident outcome is the label, because source made_sla
+flags usually change at closure. Train/validation/test and calibration folds
+separate incident numbers. Calibration is retained only when validation Brier
+improves; best model is selected by validation PR-AUC. See the ML-2 evaluation
+report for measured results and the explicit policy/domain-transfer limitations.
+At serving, the saved model runs before rules; already-breached requests always
+return 1.0/high from the deterministic override.
+
+## Intake and reports (T43)
+
+Set `GEMINI_API_KEY` securely and `GEMINI_MODEL` to an available model ID to enable
+Google ADK intake and Gemini reports. `GEMINI_FALLBACK_MODEL` optionally configures a second model. Without a key or model, rules are selected.
+The gateway retries 429 and 503 errors, honors server RetryInfo retryDelay within the overall timeout, and does not cache rules fallback answers when models are configured. Free tier quotas are approximately 5 requests/minute and 20/day per model; intake uses approximately 3 model requests per turn.
+`GEMINI_TIMEOUT_SECONDS=20` bounds the whole live request, including retries;
+`GEMINI_RETRIES=2`, `GEMINI_BACKOFF_SECONDS=0.25`, and `AI_CACHE_SIZE=128` configure
+retry back-off and the in-memory LRU response cache. Timeout/quota/provider errors
+fall back to deterministic rules. Cached responses include their actual engine.
+Restart the service after configuration changes to clear cache and reload providers.
+
+The ADK agent has request-scoped sessions and two tools: classify_text (the local
+classifier chain) and draft_incident. Allowed services and categories are in its instruction.
+The entire conversation arrives with every request. Responses validate service IDs,
+categories and missing fields. The fallback matches service names, uses the local
+classifier, extracts explicit user counts, and asks for each missing field.
+“Everyone” signals broad impact but cannot identify an exact headcount: it asks
+for that number rather than inventing it. The fallback report has Summary,
+Timeline, Impact, Root cause, Resolution, SLA outcome and Follow-ups; absent facts
+are labelled unknown/not supplied.
+
+Unit tests mock ADK/Gemini and never call external services. For an optional live
+check with fictional inputs, run `uv run python scripts/smoke_gemini.py`. This run
+reports BLOCKED because GEMINI_API_KEY and GEMINI_MODEL are absent; mocked and
+fallback checks pass. API contract v1 now includes the additive engine fields.
+

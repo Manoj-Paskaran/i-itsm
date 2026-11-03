@@ -28,12 +28,18 @@ class CategoryClassifier(ABC):
 
 
 class KeywordRuleClassifier(CategoryClassifier):
+    def _scores(self, text: str, categories: Sequence[str]) -> list[int]:
+        words = set(re.findall(r"\w+", text.casefold()))
+        return [len(words.intersection(KEYWORDS.get(c.casefold(), ()))) for c in categories]
+
+    def has_match(self, text: str, allowed: Sequence[str] | None = None) -> bool:
+        return any(self._scores(text, allowed if allowed is not None else list(KEYWORDS)))
+
     def predict(self, text: str, allowed: Sequence[str] | None = None) -> Prediction:
         categories = list(dict.fromkeys(allowed if allowed is not None else KEYWORDS))
         if not categories:
             raise ValueError("At least one allowed category is required")
-        words = set(re.findall(r"\w+", text.casefold()))
-        scores = [len(words.intersection(KEYWORDS.get(c.casefold(), ()))) for c in categories]
+        scores = self._scores(text, categories)
         total = sum(scores)
         candidates = [
             Candidate(category=c, score=s / total if total else 1 / len(categories))
@@ -50,18 +56,34 @@ class KeywordRuleClassifier(CategoryClassifier):
 
 class ClassifierChain(CategoryClassifier):
     def __init__(
-        self, model: CategoryClassifier | None = None, fallback: CategoryClassifier | None = None
+        self,
+        model: CategoryClassifier | None = None,
+        fallback: CategoryClassifier | None = None,
+        gemini: CategoryClassifier | None = None,
+        threshold: float = 0.55,
     ) -> None:
         self.model = model
+        self.gemini = gemini
+        self.threshold = threshold
         self.fallback = fallback or KeywordRuleClassifier()
 
     def predict(self, text: str, allowed: Sequence[str] | None = None) -> Prediction:
+        model_prediction = None
         if self.model is not None:
             try:
                 prediction = self.model.predict(text, allowed)
                 if allowed is None or prediction.category in allowed:
-                    return prediction
+                    model_prediction = prediction
+                    if prediction.confidence >= self.threshold:
+                        return prediction
             except Exception:
                 # An unavailable model must not disable core classification.
                 logger.warning("Model unavailable; using rule fallback", exc_info=True)
+        if self.gemini is not None:
+            try:
+                return self.gemini.predict(text, allowed)
+            except Exception:
+                logger.warning("Gemini classification unavailable; using rules", exc_info=True)
+        if model_prediction is not None and not KeywordRuleClassifier().has_match(text, allowed):
+            return model_prediction
         return self.fallback.predict(text, allowed)

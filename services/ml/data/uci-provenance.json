@@ -1,0 +1,7 @@
+{
+  "dataset": 498,
+  "url": "https://archive.ics.uci.edu/static/public/498/incident+management+process+enriched+event+log.zip",
+  "sha256": "6294e29a311647306bfdfc85783f7df66517c197b9cd49aa5ee36ba9c525d1d6",
+  "license": "CC BY 4.0",
+  "doi": "10.24432/C57S4H"
+}

@@ -1,0 +1,116 @@
+{
+  "labels": [
+    "hardware",
+    "software",
+    "network",
+    "database",
+    "cloud",
+    "security",
+    "authentication",
+    "application",
+    "storage"
+  ],
+  "version": 1,
+  "train_date": "2026-11-06T16:08:20.564439+00:00",
+  "seed": 42,
+  "validation_macro_f1": {
+    "tfidf-logreg": 0.7457062026725318,
+    "tfidf-svc": 0.8206752981207235,
+    "embedding-logreg": 0.779995906757072
+  },
+  "test": {
+    "hardware": {
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "f1-score": 0.9411764705882353,
+      "support": 32.0
+    },
+    "software": {
+      "precision": 0.7083333333333334,
+      "recall": 0.53125,
+      "f1-score": 0.6071428571428571,
+      "support": 32.0
+    },
+    "network": {
+      "precision": 0.8823529411764706,
+      "recall": 0.9375,
+      "f1-score": 0.9090909090909091,
+      "support": 32.0
+    },
+    "database": {
+      "precision": 0.8285714285714286,
+      "recall": 0.90625,
+      "f1-score": 0.8656716417910447,
+      "support": 32.0
+    },
+    "cloud": {
+      "precision": 0.7352941176470589,
+      "recall": 0.78125,
+      "f1-score": 0.7575757575757576,
+      "support": 32.0
+    },
+    "security": {
+      "precision": 1.0,
+      "recall": 0.84375,
+      "f1-score": 0.9152542372881356,
+      "support": 32.0
+    },
+    "authentication": {
+      "precision": 0.7941176470588235,
+      "recall": 0.84375,
+      "f1-score": 0.8181818181818182,
+      "support": 32.0
+    },
+    "application": {
+      "precision": 0.9310344827586207,
+      "recall": 0.84375,
+      "f1-score": 0.8852459016393442,
+      "support": 32.0
+    },
+    "storage": {
+      "precision": 0.9142857142857143,
+      "recall": 1.0,
+      "f1-score": 0.9552238805970149,
+      "support": 32.0
+    },
+    "accuracy": 0.8541666666666666,
+    "macro avg": {
+      "precision": 0.8536531726355933,
+      "recall": 0.8541666666666666,
+      "f1-score": 0.850507052655013,
+      "support": 288.0
+    },
+    "weighted avg": {
+      "precision": 0.8536531726355933,
+      "recall": 0.8541666666666666,
+      "f1-score": 0.850507052655013,
+      "support": 288.0
+    }
+  },
+  "masked_test_macro_f1": 0.43292754962594365,
+  "masked_test_per_class_f1": {
+    "hardware": 0.7164179104477612,
+    "software": 0.19047619047619047,
+    "network": 0.4507042253521127,
+    "database": 0.36363636363636365,
+    "cloud": 0.2033898305084746,
+    "security": 0.4,
+    "authentication": 0.6666666666666666,
+    "application": 0.43137254901960786,
+    "storage": 0.47368421052631576
+  },
+  "source_counts": {
+    "application": 160,
+    "authentication": 160,
+    "cloud": 160,
+    "database": 160,
+    "hardware": 160,
+    "network": 160,
+    "security": 160,
+    "software": 160,
+    "storage": 160
+  },
+  "train_rows": 3564,
+  "validation_rows": 288,
+  "test_rows": 288
+}

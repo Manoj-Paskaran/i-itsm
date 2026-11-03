@@ -1,0 +1,8 @@
+{
+  "dataset": "KameronB/synthetic-it-callcenter-tickets",
+  "revision": "11db8c3d64ffca2027afc49da9db9516a3254bbc",
+  "license": "apache-2.0",
+  "url": "https://huggingface.co/datasets/KameronB/synthetic-it-callcenter-tickets/resolve/11db8c3d64ffca2027afc49da9db9516a3254bbc/synthetic-it-call-center-tickets.csv",
+  "sha256": "0c5b8427ca1981c43d123abddbff7ed601d2e92cdc3cd3ba543c8b92c44ee2a3",
+  "bytes": 36318494
+}

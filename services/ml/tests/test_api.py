@@ -119,14 +119,14 @@ def test_risk_boundaries(
         ),
     ],
 )
-def test_unimplemented_endpoints_validate_and_echo_id(
+def test_intake_and_report_validate_and_echo_id(
     client: TestClient,
     path: str,
     body: dict[str, object],
 ) -> None:
     response = client.post(f"/v1/{path}", json=body, headers={"X-Request-Id": "stub-test"})
-    assert response.status_code == 501
-    assert response.json() == {"error": {"code": "NOT_IMPLEMENTED", "message": "NOT_IMPLEMENTED"}}
+    assert response.status_code == 200
+    assert response.json()["engine"] == "rules"
     assert response.headers["X-Request-Id"] == "stub-test"
     invalid = client.post(f"/v1/{path}", json={})
     assert invalid.status_code == 422

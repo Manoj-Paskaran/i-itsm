@@ -3,6 +3,9 @@ from fastapi import APIRouter, HTTPException, Request
 from itsm_ml.classifiers.category import ClassifierChain
 from itsm_ml.embeddings.embedder import normalise
 from itsm_ml.embeddings.provider import get_embedder
+from itsm_ml.genai.gateway import ResilientGateway
+from itsm_ml.genai.intake import IntakeAgent
+from itsm_ml.genai.report import ReportAgent
 from itsm_ml.risk.estimator import RiskEstimatorChain
 from itsm_ml.schemas.models import (
     ClassifyRequest,
@@ -45,15 +48,27 @@ def embed(request: EmbedRequest, http: Request) -> EmbedResponse:
         raise HTTPException(503, detail="Embedding model unavailable or incompatible") from exc
 
 
-@router.post("/intake", response_model=IntakeResponse, responses={501: {"model": ErrorResponse}})
-def intake(request: IntakeRequest) -> IntakeResponse:
-    raise HTTPException(501, detail="NOT_IMPLEMENTED")
+@router.post("/intake", response_model=IntakeResponse)
+async def intake(request: IntakeRequest, http: Request) -> IntakeResponse:
+    gateway: ResilientGateway = http.app.state.ai_gateway
+    agents: list[IntakeAgent] = http.app.state.intake_agents
+    fallback: IntakeAgent = http.app.state.intake_fallback
+    return await gateway.execute(
+        "intake",
+        request,
+        [lambda a=a: a.intake(request) for a in agents],  # type: ignore[misc]
+        lambda: fallback.intake(request),
+    )
 
 
-@router.post(
-    "/post-incident-report",
-    response_model=ReportResponse,
-    responses={501: {"model": ErrorResponse}},
-)
-def report(request: ReportRequest) -> ReportResponse:
-    raise HTTPException(501, detail="NOT_IMPLEMENTED")
+@router.post("/post-incident-report", response_model=ReportResponse)
+async def report(request: ReportRequest, http: Request) -> ReportResponse:
+    gateway: ResilientGateway = http.app.state.ai_gateway
+    agents: list[ReportAgent] = http.app.state.report_agents
+    fallback: ReportAgent = http.app.state.report_fallback
+    return await gateway.execute(
+        "report",
+        request,
+        [lambda a=a: a.report(request) for a in agents],  # type: ignore[misc]
+        lambda: fallback.report(request),
+    )

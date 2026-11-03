@@ -2,3 +2,6 @@
 .mypy_cache/
 *.egg-info/
 .cache/
+mlruns/
+mlflow.db
+data/embedding-cache*
