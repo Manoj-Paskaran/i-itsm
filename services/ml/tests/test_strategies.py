@@ -72,3 +72,48 @@ def test_settings_allow_missing_key_and_read_environment(monkeypatch: pytest.Mon
     monkeypatch.setenv("PORT", "0")
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_model_failures_are_logged(caplog: pytest.LogCaptureFixture) -> None:
+    ClassifierChain(model=BrokenClassifier()).predict("wifi")
+    assert "Model unavailable" in caplog.text
+    assert "model offline" in caplog.text
+
+
+def test_health_reports_application_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from itsm_ml.main import create_app
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    app = create_app()
+    app.state.classifier.model = KeywordRuleClassifier()
+    app.state.embedder = object()
+    assert TestClient(app).get("/health").json()["models"] == {
+        "classifier": True,
+        "slaRisk": False,
+        "embedder": True,
+        "gemini": True,
+    }
+
+
+def test_risk_uses_actual_thirty_minute_window() -> None:
+    from itsm_ml.risk.estimator import RuleBasedRiskEstimator
+
+    for opened, remaining, expected in [
+        (10, 20, "low"),
+        (15, 15, "medium"),
+        (22.5, 7.5, "high"),
+        (0, 0, "high"),
+    ]:
+        req = RiskRequest(
+            priority="P1",
+            impact=1,
+            urgency=1,
+            category="network",
+            service="payment",
+            reassignment_count=0,
+            minutes_open=opened,
+            minutes_to_deadline=remaining,
+        )
+        assert RuleBasedRiskEstimator().predict(req).level == expected

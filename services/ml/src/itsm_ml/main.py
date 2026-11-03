@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
@@ -8,8 +9,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from itsm_ml.api.routes import router
+from itsm_ml.classifiers.category import ClassifierChain
 from itsm_ml.config import Settings
-from itsm_ml.schemas.models import ErrorDetail, ErrorResponse, HealthResponse
+from itsm_ml.risk.estimator import RiskEstimatorChain
+from itsm_ml.schemas.models import ErrorDetail, ErrorResponse, HealthResponse, ModelStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,10 @@ def error_response(status: int, code: str, message: str) -> JSONResponse:
 def create_app() -> FastAPI:
     app = FastAPI(title="I-ITSM intelligence service", version="0.1.0")
     app.state.settings = Settings()
+    app.state.classifier = ClassifierChain()
+    app.state.risk_estimator = RiskEstimatorChain()
+    app.state.embedder = None
+    app.state.embedding_lock = threading.Lock()
 
     @app.middleware("http")
     async def request_id(
@@ -47,8 +54,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
-        # Flags describe loaded models; rule fallbacks are not trained models.
-        return HealthResponse()
+        return HealthResponse(
+            models=ModelStatus(
+                classifier=app.state.classifier.model is not None,
+                sla_risk=app.state.risk_estimator.model is not None,
+                embedder=app.state.embedder is not None,
+                gemini=bool(app.state.settings.gemini_api_key),
+            )
+        )
 
     app.include_router(router)
     return app

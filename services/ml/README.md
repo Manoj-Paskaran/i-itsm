@@ -17,11 +17,11 @@ uv run uvicorn itsm_ml.main:app --host 0.0.0.0 --port 8001
 ```
 
 `GET /docs` serves Swagger UI; `GET /health` reports status and loaded-model flags.
-All four model flags are false in this scaffold, including when a Gemini key is configured.
+Health reports loaded model state and whether a Gemini key is configured.
 `uv run itsm-ml` also starts the service and honors `PORT` (default 8001).
 Configuration comes from process environment or a local `.env` (never commit it):
 `GEMINI_API_KEY` (optional), `GEMINI_MODEL` (empty by default),
-`EMBEDDING_MODEL` (`sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions for future work),
+`EMBEDDING_MODEL` (`BAAI/bge-small-en-v1.5`, 384 dimensions for future work),
 `ARTIFACTS_DIR` (`artifacts`), `PORT` (`8001`). Embedding model changes will require re-embedding.
 In restricted cloud environments, use a writable `UV_CACHE_DIR`, for example `/workspace/.cache/uv`.
 
@@ -40,11 +40,10 @@ Errors use `{ "error": { "code": "...", "message": "..." } }`, including validat
   These are heuristic scores, not calibrated probabilities. `ClassifierChain`
   tries an injected model then rule fallback; the model slot is empty in T01.
 - `POST /v1/sla-risk`: `RiskEstimatorChain` uses the same model-to-rules pattern.
-  The scaffold compares `minutesToDeadline` with heuristic priority targets of
-  60/240/480/1440 minutes for P1/P2/P3/P4. Remaining fraction <= 25% is high risk,
-  <= 50% is medium, otherwise low; probability is `clamp(1 - fraction, 0, 1)`.
-  Negative deadlines are overdue (probability 1). These defaults are not authoritative
-  per-service SLA policies or a trained predictor; T42 replaces/extends them.
+  Risk is the fraction of the actual SLA window already elapsed:
+  `minutesOpen / (minutesOpen + minutesToDeadline)`. At 75% the risk is high;
+  at 50% it is medium; below that it is low. Already breached or zero windows
+  yield probability 1 and high risk. These are rules, not calibrated predictions.
 - `POST /v1/embed`, `/v1/intake`, `/v1/post-incident-report`: validate full request
   shape and return 501 `NOT_IMPLEMENTED`, as required by T01. Invalid inputs return
   422 `VALIDATION_ERROR` before the stub executes. Incident fields remain an open
@@ -78,3 +77,14 @@ Put untracked raw datasets in `data/raw/`; trained artifacts belong in `artifact
 with experiments ignored by the root `.gitignore`. No training runs or AI calls
 occur during startup. Next tasks: T40 classifier, T41 embeddings, T42 risk model,
 T43 Gemini intake. The API integrates through `IntelligencePort` in T44.
+
+## Embeddings (T41)
+
+`POST /v1/embed` accepts 1–64 texts and returns L2-normalised 384-dimensional
+vectors from `BAAI/bge-small-en-v1.5`. The local model is initialised once, lazily.
+Set `FASTEMBED_CACHE_PATH` for its cache and `EMBEDDING_LOCAL_ONLY=true` to disallow
+downloads. Docker preloads the model and runs in local-only mode.
+`EMBEDDING_PROVIDER=gemini` opts into `GEMINI_EMBEDDING_MODEL`; it requires a key
+and requests `EMBEDDING_DIM` (384 by default). Incompatible output fails with 503;
+providers never silently mix dimensions. Run `uv run pytest --run-slow tests/test_embeddings.py`
+for the downloaded-model paraphrase test. Default tests use fakes and no network.

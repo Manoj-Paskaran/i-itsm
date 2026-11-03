@@ -45,7 +45,7 @@ class Prediction(ContractModel):
 
 
 class EmbedRequest(ContractModel):
-    texts: Annotated[list[Text], Field(min_length=1)]
+    texts: Annotated[list[Text], Field(min_length=1, max_length=64)]
 
 
 class EmbedResponse(ContractModel):

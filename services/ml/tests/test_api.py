@@ -77,7 +77,12 @@ def test_risk_boundaries(
     client: TestClient, priority: str, target: int, ratio: float, level: str, probability: float
 ) -> None:
     response = client.post(
-        "/v1/sla-risk", json=risk_body(priority=priority, minutesToDeadline=ratio * target)
+        "/v1/sla-risk",
+        json=risk_body(
+            priority=priority,
+            minutesToDeadline=ratio * target,
+            minutesOpen=max(0, (1 - ratio) * target),
+        ),
     )
     assert response.status_code == 200
     assert response.json()["level"] == level
@@ -88,7 +93,6 @@ def test_risk_boundaries(
 @pytest.mark.parametrize(
     "path,body",
     [
-        ("embed", {"texts": ["example"]}),
         (
             "intake",
             {

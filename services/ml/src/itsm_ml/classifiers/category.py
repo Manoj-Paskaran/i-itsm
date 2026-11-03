@@ -1,3 +1,4 @@
+import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -15,6 +16,9 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
     "application": ("application", "app", "crash", "page", "portal"),
     "storage": ("storage", "disk", "space", "backup", "volume"),
 }
+
+
+logger = logging.getLogger(__name__)
 
 
 class CategoryClassifier(ABC):
@@ -59,5 +63,5 @@ class ClassifierChain(CategoryClassifier):
                     return prediction
             except Exception:
                 # An unavailable model must not disable core classification.
-                pass
+                logger.warning("Model unavailable; using rule fallback", exc_info=True)
         return self.fallback.predict(text, allowed)
