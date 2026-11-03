@@ -1,0 +1,11 @@
+dist
+coverage
+.turbo
+.pnpm-store
+pnpm-lock.yaml
+services/ml
+docs/spec
+*.md
+.github/workflows/ml.yml
+
+**/routeTree.gen.ts

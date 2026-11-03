@@ -1,0 +1,50 @@
+name: itsm
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-trixie
+    environment:
+      POSTGRES_USER: itsm
+      POSTGRES_PASSWORD: itsm
+      POSTGRES_DB: itsm
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U itsm -d itsm']
+      interval: 5s
+
+  valkey:
+    image: valkey/valkey:9.0.7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+
+  mailpit:
+    image: axllent/mailpit:v1.33.0
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.39.0
+    ports:
+      - '3001:3000'
+      - '4317:4317'
+      - '4318:4318'
+
+  # Intelligence-service Dockerfile; uncomment to run the intelligence service in compose
+  # ml:
+  #   build: ../services/ml
+  #   ports:
+  #     - "8001:8001"
+  #   env_file: ../.env
+
+volumes:
+  pgdata:

@@ -26,3 +26,12 @@ __pycache__/
 # ML artifacts (commit small final models deliberately, not experiments)
 services/ml/artifacts/experiments/
 
+
+# Monorepo tooling
+node_modules/
+dist/
+.turbo/
+coverage/
+.pnpm-store/
+*.tsbuildinfo
+apps/web/dev-dist/

@@ -1,0 +1,6 @@
+packages:
+  - apps/*
+  - services/api
+  - packages/*
+allowBuilds:
+  '@swc/core': true
