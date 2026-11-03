@@ -30,6 +30,13 @@ export class DrizzleItServiceRepository implements ItServiceRepository {
       throw new DatabaseFailureException(error);
     }
   }
+  async listAll(): Promise<ItService[]> {
+    try {
+      return (await this.db.select().from(itServices)).map((row) => this.map(row));
+    } catch (error) {
+      throw new DatabaseFailureException(error);
+    }
+  }
   async listActive(): Promise<ItService[]> {
     try {
       return (await this.db.select().from(itServices).where(eq(itServices.active, true))).map(
@@ -62,6 +69,13 @@ export class DrizzleCategoryRepository implements CategoryRepository {
     try {
       const [row] = await this.db.select().from(categories).where(eq(categories.id, id));
       return row ? this.map(row) : null;
+    } catch (error) {
+      throw new DatabaseFailureException(error);
+    }
+  }
+  async listAll(): Promise<Category[]> {
+    try {
+      return (await this.db.select().from(categories)).map((row) => this.map(row));
     } catch (error) {
       throw new DatabaseFailureException(error);
     }

@@ -154,3 +154,40 @@ describe('SlaCatalog rules', () => {
     expect(() => new SlaCatalog([policy(), policy(asItServiceId('other'))])).not.toThrow();
   });
 });
+
+describe('SLA validation diagnostics', () => {
+  it('identifiesInvalidWindowsAndAcceptsEqualPositiveWindows', () => {
+    const action = () => SlaTarget.of(Duration.ofMs(1), Duration.ofMs(0));
+    expect(action).toThrow(InvalidInputException);
+    expect(action).toThrow(/response.*resolution/i);
+    try {
+      action();
+    } catch (error) {
+      expect(error).toMatchObject({ details: { response: 1, resolution: 0 } });
+    }
+    expect(SlaTarget.of(Duration.ofMs(1), Duration.ofMs(1)).resolution.ms).toBe(1);
+  });
+  it('identifiesInvalidPolicyNameAndWarningRatio', () => {
+    for (const [action, field] of [
+      [() => SlaPolicy.rehydrate({ ...defaultPolicy.toSnapshot(), name: ' ' }), 'name'],
+      [
+        () => SlaPolicy.rehydrate({ ...defaultPolicy.toSnapshot(), warningRatio: 0 }),
+        'warningRatio',
+      ],
+    ] as const) {
+      expect(action).toThrow(InvalidInputException);
+      expect(action).toThrow(new RegExp(field));
+    }
+  });
+  it('returnsThePolicyId', () => expect(policy().id()).toBe(asSlaPolicyId('custom')));
+  it('identifiesTheServiceWithDuplicatePolicies', () => {
+    const action = () => new SlaCatalog([policy(), policy()]);
+    expect(action).toThrow(InvalidInputException);
+    expect(action).toThrow(/service/i);
+    try {
+      action();
+    } catch (error) {
+      expect(error).toMatchObject({ details: { serviceId } });
+    }
+  });
+});

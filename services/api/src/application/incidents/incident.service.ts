@@ -17,6 +17,7 @@ import {
 import { Actor, IncidentFactory, type Incident } from '../../domain/incidents/index.js';
 import { PriorityInput, type PriorityStrategyRegistry } from '../../domain/priority/index.js';
 import {
+  asCategoryId,
   asIncidentId,
   asItServiceId,
   asUserId,
@@ -167,6 +168,12 @@ export class IncidentService {
   async list(user: User, query: IncidentListQuery) {
     const filter = {
       limit: query.limit,
+      ...(query.from ? { from: new Date(query.from) } : {}),
+      ...(query.to
+        ? { to: new Date(query.to.length === 10 ? `${query.to}T23:59:59.999Z` : query.to) }
+        : {}),
+      ...(query.categoryId ? { categoryId: asCategoryId(query.categoryId) } : {}),
+      ...(query.sla ? { sla: query.sla } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}),
       ...(query.serviceId ? { serviceId: asItServiceId(query.serviceId) } : {}),
@@ -219,6 +226,8 @@ export class IncidentService {
   ) {
     const i = await this.visible(user, id);
     user.require(permission);
+    // Record any SLA crossing first, so a breach can't slip between monitor sweeps (e.g. a fast close).
+    i.checkSla(this.clock.now());
     await action(i, Actor.user(user));
     await this.save(i);
     return this.detail(i);

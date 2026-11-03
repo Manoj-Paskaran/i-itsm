@@ -21,6 +21,9 @@ export class InMemoryUserRepository implements UserRepository {
     const s = [...this.data.values()].find((u) => u.email === email.value);
     return s ? UserFactory.rehydrate(structuredClone(s)) : null;
   }
+  async listAll() {
+    return [...this.data.values()].map((s) => UserFactory.rehydrate(structuredClone(s)));
+  }
   async listTechnicians() {
     return [...this.data.values()]
       .filter((s) => s.role === 'TECHNICIAN' || s.role === 'TEAM_LEAD')

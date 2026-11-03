@@ -28,7 +28,7 @@ export abstract class EscalationHandler {
   ): EscalationDecision | null {
     if (escalationRank(level) <= escalationRank(req.currentLevel)) return null;
     const format = (d: Duration): string =>
-      d.ms % 60000 === 0 ? `${d.minutes} min` : `${d.ms / 1000} s`;
+      d.ms % 60000 === 0 ? `${d.minutes} min` : `${Math.round(d.ms / 1000)} s`;
     return new EscalationDecision(
       req.currentLevel,
       level,

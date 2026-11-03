@@ -99,3 +99,20 @@ describe('IncidentFactory', () => {
     expect(JSON.stringify(context)).toBe(before);
   });
 });
+
+it.each([
+  ['Straße network', 'STRASSE network'],
+  ['ab c network', 'a bc network'],
+])('factoryAllowsDistinctNormalizedTitles %s %s', (title, existingTitle) => {
+  expect(() =>
+    IncidentFactory.report(
+      { ...draft, title },
+      {
+        ...context,
+        openIncidentsOfReporter: [
+          { id: duplicateId, serviceId: service.id(), title: existingTitle },
+        ],
+      },
+    ),
+  ).not.toThrow();
+});

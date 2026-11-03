@@ -28,6 +28,15 @@ export class InMemoryIncidentRepository implements IncidentRepository {
     return [...this.data.values()]
       .filter(
         (s) =>
+          (!f.from || Date.parse(s.createdAt) >= f.from.getTime()) &&
+          (!f.to || Date.parse(s.createdAt) <= f.to.getTime()) &&
+          (!f.categoryId || s.categoryId === f.categoryId) &&
+          (!f.sla ||
+            (s.slaClock !== null &&
+              s.closure?.reason !== 'DUPLICATE' &&
+              (f.sla === 'BREACHED'
+                ? s.slaClock.breached.length > 0
+                : s.slaClock.breached.length === 0))) &&
           (!f.reporterId || s.reporterId === f.reporterId) &&
           (!f.assigneeId || s.assigneeId === f.assigneeId) &&
           (!f.status || s.status === f.status) &&

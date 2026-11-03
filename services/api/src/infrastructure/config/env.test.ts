@@ -10,8 +10,33 @@ describe('loadEnv', () => {
       REFRESH_TOKEN_TTL_SECONDS: 604800,
       PORT: 3000,
       DATABASE_URL: 'postgresql://itsm:itsm@localhost:5432/itsm',
+      VALKEY_URL: 'redis://localhost:6379',
+      MONITOR_ENABLED: true,
+      MONITOR_INTERVAL_MS: 10000,
+      ESCALATION_POLICY: 'demo',
+      SMTP_URL: 'smtp://localhost:1025',
+      NOTIFICATIONS_EMAIL_ENABLED: true,
       WEB_ORIGIN: 'http://localhost:5173',
     });
+  });
+  it('configuresMonitoringAndProductionPolicy', () => {
+    expect(loadEnv({ NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(32) }).ESCALATION_POLICY).toBe(
+      'standard',
+    );
+    expect(
+      loadEnv({
+        MONITOR_ENABLED: 'false',
+        MONITOR_INTERVAL_MS: '1000',
+        ESCALATION_POLICY: 'standard',
+      }),
+    ).toMatchObject({
+      MONITOR_ENABLED: false,
+      MONITOR_INTERVAL_MS: 1000,
+      ESCALATION_POLICY: 'standard',
+    });
+    expect(() => loadEnv({ MONITOR_INTERVAL_MS: '999' })).toThrow(/MONITOR_INTERVAL_MS/);
+    expect(() => loadEnv({ MONITOR_ENABLED: 'maybe' })).toThrow(/MONITOR_ENABLED/);
+    expect(() => loadEnv({ VALKEY_URL: 'https://localhost' })).toThrow(/VALKEY_URL/);
   });
   it('requiresSecretInProduction', () => {
     expect(() => loadEnv({ NODE_ENV: 'production' })).toThrow(/JWT_SECRET/);

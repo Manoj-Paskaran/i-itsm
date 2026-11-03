@@ -12,7 +12,7 @@ export class Category {
   private readonly categoryId: CategoryId;
   private readonly code: string;
   private categoryName: string;
-  private readonly requiredSkill: SkillTag;
+  private requiredSkill: SkillTag;
   private active: boolean;
   private constructor(s: CategorySnapshot) {
     this.categoryId = s.id;
@@ -42,6 +42,12 @@ export class Category {
   }
   rename(name: string): void {
     this.categoryName = text(name, 'name', 80);
+  }
+  changeRequiredSkill(value: SkillTag): void {
+    this.requiredSkill = value;
+  }
+  activate(): void {
+    this.active = true;
   }
   deactivate(): void {
     this.active = false;

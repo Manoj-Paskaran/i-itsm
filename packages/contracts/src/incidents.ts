@@ -109,6 +109,10 @@ export const FeedbackRequestSchema = z.object({
 });
 export const CloseAsDuplicateRequestSchema = z.object({ duplicateOfId: z.uuid() });
 export const IncidentListQuerySchema = z.object({
+  from: z.union([z.iso.date(), iso]).optional(),
+  to: z.union([z.iso.date(), iso]).optional(),
+  categoryId: z.uuid().optional(),
+  sla: z.enum(['BREACHED', 'WITHIN_SLA']).optional(),
   status: IncidentStatusSchema.optional(),
   priority: PrioritySchema.optional(),
   serviceId: z.uuid().optional(),

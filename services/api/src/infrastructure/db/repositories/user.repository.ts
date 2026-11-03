@@ -70,6 +70,13 @@ export class DrizzleUserRepository implements UserRepository {
       throw new DatabaseFailureException(error);
     }
   }
+  async listAll(): Promise<User[]> {
+    try {
+      return await Promise.all((await this.db.select().from(users)).map((row) => this.map(row)));
+    } catch (error) {
+      throw new DatabaseFailureException(error);
+    }
+  }
   async listTechnicians(): Promise<Technician[]> {
     try {
       const rows = await this.db

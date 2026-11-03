@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   '@swc/core': true
   esbuild: false
+  msgpackr-extract: false
   cpu-features: false
   protobufjs: false
   ssh2: false

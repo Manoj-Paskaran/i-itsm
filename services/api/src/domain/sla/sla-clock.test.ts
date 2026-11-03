@@ -266,3 +266,18 @@ describe('SlaClock monitoring rules', () => {
     expect(restored.toSnapshot()).toEqual(sla.toSnapshot());
   });
 });
+
+describe('SlaClock diagnostics and restored crossings', () => {
+  it('identifiesInvalidPauseAndResumeStates', () => {
+    const sla = clock();
+    expect(() => sla.resume(at(1))).toThrow(InvalidInputException);
+    expect(() => sla.resume(at(1))).toThrow(/not paused/i);
+    sla.pause(at(1));
+    expect(() => sla.pause(at(2))).toThrow(InvalidInputException);
+    expect(() => sla.pause(at(2))).toThrow(/already paused/i);
+  });
+  it('marksRestoredBreachesAsAlreadyWarned', () => {
+    const snapshot = { ...clock().toSnapshot(), warned: [], breached: [SlaKind.RESPONSE] };
+    expect(SlaClock.rehydrate(snapshot).toSnapshot().warned).toEqual([SlaKind.RESPONSE]);
+  });
+});

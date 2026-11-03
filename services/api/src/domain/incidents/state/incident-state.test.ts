@@ -119,3 +119,15 @@ describe('Incident lifecycle transition table', () => {
     ).toThrow(InvalidIncidentException);
   });
 });
+
+it.each(actions)('reportsRejectedActionInTransitionError %s', (action) => {
+  const invokeClosed = () => invoke[action](inState('CLOSED'));
+  expect(invokeClosed).toThrow(InvalidStateTransitionException);
+  expect(invokeClosed).toThrow(expect.objectContaining({ details: { from: 'CLOSED', action } }));
+});
+it('namesUnknownStatusInSnapshotError', () => {
+  const restore = () =>
+    Incident.rehydrate({ ...snapshot('NEW'), status: 'UNKNOWN' as IncidentStatus });
+  expect(restore).toThrow(InvalidIncidentException);
+  expect(restore).toThrow(/UNKNOWN/);
+});

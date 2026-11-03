@@ -74,9 +74,13 @@ describe('users', () => {
   });
   it('keeps permission sets immutable through forEach', () => {
     const user = UserFactory.create({ ...common, role: Role.ADMIN });
+    expect(user.permissions().size).toBe(5);
+    const visited: P[] = [];
     user.permissions().forEach((_value, _again, permissions) => {
+      visited.push(_value);
       expect('add' in permissions).toBe(false);
     });
+    expect(visited).toHaveLength(user.permissions().size);
     expect(user.can(P.CONFIG_MANAGE)).toBe(true);
   });
   it('rejects empty and overlong names and invalid email', () => {
@@ -138,4 +142,85 @@ describe('users', () => {
     lead.removeMember(id);
     expect(lead.supervises(id)).toBe(false);
   });
+  it('preserves employee department and user rename through snapshots', () => {
+    const employee = UserFactory.create({ ...common, department: 'IT', role: Role.EMPLOYEE });
+    expect(employee.toSnapshot()).toMatchObject({ department: 'IT' });
+    employee.rename('New Name');
+    expect(employee.name()).toBe('New Name');
+    expect(employee.toSnapshot().name).toBe('New Name');
+    expect(() => employee.rename('x'.repeat(101))).toThrow(/name/);
+  });
+  it('changes employee department in snapshots', () => {
+    const employee = UserFactory.create({
+      ...common,
+      department: 'IT',
+      role: Role.EMPLOYEE,
+    }) as Employee;
+    employee.changeDepartment('Finance');
+    expect(employee.toSnapshot()).toMatchObject({ department: 'Finance' });
+    expect(UserFactory.rehydrate(employee.toSnapshot()).toSnapshot()).toEqual(
+      employee.toSnapshot(),
+    );
+  });
+  it('rehydrates technicians with their saved availability', () => {
+    const snapshot = {
+      ...common,
+      ...tech,
+      active: true,
+      serviceHistory: [],
+      availability: Availability.BUSY,
+      role: Role.TECHNICIAN,
+    } as const;
+    const technician = UserFactory.rehydrate(snapshot);
+    expect(technician).toBeInstanceOf(Technician);
+    expect((technician as Technician).availabilityStatus()).toBe(Availability.BUSY);
+    const corrupt = { ...snapshot, availability: 'ON_MARS' as Availability };
+    expect(() => UserFactory.rehydrate(corrupt)).toThrow(/availability/);
+  });
+  it('rehydrates team leads without a team as an empty team', () => {
+    const lead = UserFactory.create({ ...common, ...tech, role: Role.TEAM_LEAD });
+    expect(lead.toSnapshot()).toMatchObject({ team: [] });
+  });
+  it('rejects rehydrating a team lead snapshot with another role', () => {
+    const snapshot = {
+      ...common,
+      ...tech,
+      active: true,
+      serviceHistory: [],
+      role: Role.TECHNICIAN,
+    } as const;
+    expect(() => TeamLead.rehydrate(snapshot)).toThrow(InvalidInputException);
+  });
+  it('rejects unsupported roles when creating or rehydrating users', () => {
+    const invalidRole = 'UNKNOWN' as Role;
+    expect(() => UserFactory.create({ ...common, role: invalidRole })).toThrow(/role/);
+    expect(() => UserFactory.rehydrate({ ...common, role: invalidRole } as never)).toThrow(/role/);
+  });
+  it('applies technician availability and validates capacity boundaries', () => {
+    const technician = UserFactory.create({
+      ...common,
+      ...tech,
+      role: Role.TECHNICIAN,
+    }) as Technician;
+    expect(technician.role()).toBe(Role.TECHNICIAN);
+    expect([...technician.skills()].map((skill) => skill.value)).toEqual(['network']);
+    expect(technician.hasCapacity(1)).toBe(true);
+    expect(technician.hasCapacity(2)).toBe(false);
+    technician.setAvailability(Availability.BUSY);
+    expect(technician.availabilityStatus()).toBe(Availability.BUSY);
+    expect(technician.isAvailable()).toBe(false);
+    expect(() => technician.setAvailability('INVALID' as Availability)).toThrow(/availability/);
+    expect(() => technician.hasCapacity(-1)).toThrow(/activeCount/);
+  });
+});
+
+it('validates technician capacity and experience updates', () => {
+  const user = UserFactory.create({ ...common, ...tech, role: Role.TECHNICIAN });
+  if (!(user instanceof Technician)) throw new Error('Expected technician');
+  user.setCapacity(5);
+  user.setExperienceYears(7);
+  expect(user.capacity()).toBe(5);
+  expect(user.experience()).toBe(7);
+  expect(() => user.setCapacity(0)).toThrow(InvalidInputException);
+  expect(() => user.setExperienceYears(-1)).toThrow(InvalidInputException);
 });

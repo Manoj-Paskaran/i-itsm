@@ -11,6 +11,9 @@ export class InMemoryServiceRepository implements ItServiceRepository {
     const s = this.data.get(id);
     return s ? ItService.rehydrate(structuredClone(s)) : null;
   }
+  async listAll() {
+    return [...this.data.values()].map((s) => ItService.rehydrate(structuredClone(s)));
+  }
   async listActive() {
     return [...this.data.values()]
       .filter((s) => s.active)

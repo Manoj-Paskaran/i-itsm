@@ -133,3 +133,57 @@ it.each<PriorityStrategy>([new WeightedScorePriorityStrategy(), new MatrixPriori
     expect(assessment.rationale.length).toBeGreaterThan(0);
   },
 );
+
+describe('priority explanations and diagnostics', () => {
+  it('exposesStableStrategyNames', () => {
+    expect(new MatrixPriorityStrategy().name).toBe('impact-urgency-matrix');
+    expect(new WeightedScorePriorityStrategy().name).toBe('weighted-score');
+  });
+  it.each([
+    [4, 'raise one level'],
+    [1, 'lower one level'],
+    [2, 'no adjustment'],
+  ])('explainsMatrixCriticalityAdjustment%s', (criticality, action) => {
+    const rationale = new MatrixPriorityStrategy().assess(input(2, 2, criticality)).rationale;
+    expect(rationale[0]).toMatch(/Impact Medium.*Urgency Medium.*P3/);
+    expect(rationale[1]).toContain(action);
+    expect(rationale[2]).toMatch(/Final priority → P[234]/);
+  });
+  it.each([
+    [input(4, 4, 2), '≥ 32'],
+    [input(4, 4, 1), '≥ 16'],
+    [input(1, 2, 3), '≥ 6'],
+    [input(1, 2, 2), '< 6'],
+  ])('explainsTheThresholdForEachPriority', (value, comparison) => {
+    expect(new WeightedScorePriorityStrategy().assess(value).rationale[2]).toContain(comparison);
+  });
+  it('rejectsEqualLowerThresholdsAndAcceptsStrictlyDescendingThresholds', () => {
+    expect(() => new WeightedScorePriorityStrategy({ p1: 10, p2: 5, p3: 5 })).toThrow(
+      InvalidInputException,
+    );
+    expect(() => new WeightedScorePriorityStrategy({ p1: 10, p2: 5, p3: 4 })).not.toThrow();
+  });
+  it('identifiesInvalidInputsAndStrategyNames', () => {
+    const weighted = new WeightedScorePriorityStrategy();
+    const registry = new PriorityStrategyRegistry([weighted], weighted.name);
+    const thresholds = { p1: 10, p2: 5, p3: 5 };
+    for (const [action, message, details] of [
+      [() => input(1, 1, 1, 0), /affectedUsers/, { affectedUsers: 0 }],
+      [() => new WeightedScorePriorityStrategy(thresholds), /thresholds/i, thresholds],
+      [() => registry.use('missing'), /unknown priority strategy/i, { name: 'missing' }],
+      [
+        () => new PriorityStrategyRegistry([weighted, weighted], weighted.name),
+        /duplicate priority strategy/i,
+        { name: weighted.name },
+      ],
+    ] as const) {
+      expect(action).toThrow(InvalidInputException);
+      expect(action).toThrow(message);
+      try {
+        action();
+      } catch (error) {
+        expect(error).toMatchObject({ details });
+      }
+    }
+  });
+});

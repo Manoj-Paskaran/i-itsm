@@ -21,6 +21,7 @@ import { ItsmExceptionFilter } from './exception.filter.js';
 @Module({
   imports: [ConfigModule, RepositoriesModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }])],
   controllers: [AuthController],
+  exports: [TOKEN_SERVICE],
   providers: [
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: TOKEN_SERVICE, useFactory: (env: Env) => new JoseTokenService(env), inject: [ENV] },

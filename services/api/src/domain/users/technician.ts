@@ -9,9 +9,9 @@ type Snapshot = Extract<UserSnapshot, { role: typeof Role.TECHNICIAN | typeof Ro
 /** Technician with skills, availability and bounded workload. */
 export class Technician extends User {
   private readonly skillSet: Map<string, SkillTag>;
-  private readonly maxActiveIncidents: number;
+  private maxActiveIncidents: number;
   private availability: Availability;
-  private readonly experienceYears: number;
+  private experienceYears: number;
   private readonly serviceHistory: Map<ItServiceId, number>;
   protected constructor(s: UserCommonSnapshot & TechnicianFields) {
     super(s);
@@ -55,8 +55,9 @@ export class Technician extends User {
     if (this.hasSkill(skill) && this.skillSet.size === 1) invalid('skills', skill.value);
     this.skillSet.delete(skill.value);
   }
+  /** Deactivated accounts are never available for assignment, whatever their availability flag says. */
   isAvailable(): boolean {
-    return this.availability === Availability.AVAILABLE;
+    return this.isActive() && this.availability === Availability.AVAILABLE;
   }
   capacity(): number {
     return this.maxActiveIncidents;
@@ -81,6 +82,12 @@ export class Technician extends User {
   }
   recordResolvedFor(id: ItServiceId): void {
     this.serviceHistory.set(id, this.experienceWith(id) + 1);
+  }
+  setCapacity(value: number): void {
+    this.maxActiveIncidents = numberIn(value, 'maxActiveIncidents', 1, 20, true);
+  }
+  setExperienceYears(value: number): void {
+    this.experienceYears = numberIn(value, 'experienceYears', 0, 50);
   }
   setAvailability(value: Availability): void {
     if (!Object.values(Availability).includes(value)) invalid('availability', value);

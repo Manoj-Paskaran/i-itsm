@@ -2,10 +2,12 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
-import { IncidentDetailSchema } from '@itsm/contracts';
+import { IncidentDetailSchema, OverviewReportSchema } from '@itsm/contracts';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../../app.module.js';
+import { InMemoryReportQueries } from '../../application/testing/in-memory-report-queries.js';
+import { InMemoryNotificationRepository } from '../../application/testing/in-memory-notification-repository.js';
 import { InMemoryIncidentRepository } from '../../application/testing/in-memory-incident-repository.js';
 import { InMemoryUserRepository } from '../../application/testing/in-memory-user-repository.js';
 import { InMemoryServiceRepository } from '../../application/testing/in-memory-service-repository.js';
@@ -15,11 +17,20 @@ import { InMemoryAuditRepository } from '../../application/testing/in-memory-aud
 import { Category, ItService } from '../../domain/catalog/index.js';
 import { asCategoryId, asItServiceId, asSlaPolicyId, asUserId } from '../../domain/shared/index.js';
 import { SlaPolicy } from '../../domain/sla/index.js';
-import { Admin, Availability, Employee, Role, Technician } from '../../domain/users/index.js';
+import {
+  Admin,
+  Availability,
+  Employee,
+  ITManager,
+  Role,
+  Technician,
+} from '../../domain/users/index.js';
 import { JoseTokenService } from '../../infrastructure/auth/token.service.js';
 import { loadEnv } from '../../infrastructure/config/env.js';
 import {
+  REPORT_QUERIES,
   AUDIT_REPOSITORY,
+  NOTIFICATION_REPOSITORY,
   CATEGORY_REPOSITORY,
   INCIDENT_REPOSITORY,
   IT_SERVICE_REPOSITORY,
@@ -32,6 +43,7 @@ const ids = {
   other: asUserId('00000000-0000-4000-8000-000000000002'),
   tech: asUserId('00000000-0000-4000-8000-000000000003'),
   admin: asUserId('00000000-0000-4000-8000-000000000004'),
+  manager: asUserId('00000000-0000-4000-8000-000000000008'),
   service: asItServiceId('00000000-0000-4000-8000-000000000005'),
   category: asCategoryId('00000000-0000-4000-8000-000000000006'),
 };
@@ -62,6 +74,7 @@ const technician = Technician.rehydrate({
   serviceHistory: [],
 });
 const admin = Admin.rehydrate({ ...common, id: ids.admin, email: 'admin@example.com' });
+const manager = ITManager.rehydrate({ ...common, id: ids.manager, email: 'manager@example.com' });
 const create = {
   title: 'WiFi network unavailable',
   description: 'Office wifi network is unavailable',
@@ -72,7 +85,11 @@ const create = {
 };
 describe('incident HTTP', () => {
   let app: INestApplication;
-  let employeeToken: string, otherToken: string, techToken: string, adminToken: string;
+  let employeeToken: string,
+    otherToken: string,
+    techToken: string,
+    adminToken: string,
+    managerToken: string;
   const server = () => app.getHttpServer() as Parameters<typeof request>[0];
   const auth = (token: string) => `Bearer ${token}`;
   async function report() {
@@ -90,7 +107,7 @@ describe('incident HTTP', () => {
       categories = new InMemoryCategoryRepository(),
       policies = new InMemorySlaPolicyRepository(),
       audit = new InMemoryAuditRepository();
-    for (const u of [employee, other, technician, admin]) await users.save(u);
+    for (const u of [employee, other, technician, admin, manager]) await users.save(u);
     await services.save(
       ItService.create({ id: ids.service, name: 'WiFi', criticality: 3, active: true }),
     );
@@ -107,6 +124,10 @@ describe('incident HTTP', () => {
       SlaPolicy.specDefault(asSlaPolicyId('00000000-0000-4000-8000-000000000007')),
     );
     const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(REPORT_QUERIES)
+      .useValue(new InMemoryReportQueries([], [], []))
+      .overrideProvider(NOTIFICATION_REPOSITORY)
+      .useValue(new InMemoryNotificationRepository())
       .overrideProvider(INCIDENT_REPOSITORY)
       .useValue(incidents)
       .overrideProvider(USER_REPOSITORY)
@@ -124,12 +145,100 @@ describe('incident HTTP', () => {
     configureApp(app);
     await app.init();
     const tokens = new JoseTokenService(loadEnv());
-    [employeeToken, otherToken, techToken, adminToken] = (await Promise.all(
-      [employee, other, technician, admin].map(async (u) => (await tokens.issueAccess(u)).token),
-    )) as [string, string, string, string];
+    [employeeToken, otherToken, techToken, adminToken, managerToken] = (await Promise.all(
+      [employee, other, technician, admin, manager].map(
+        async (u) => (await tokens.issueAccess(u)).token,
+      ),
+    )) as [string, string, string, string, string];
   });
   afterEach(async () => {
     await app?.close();
+  });
+  it('managerGetsOverview', async () => {
+    const response = await request(server())
+      .get('/api/reports/overview')
+      .set('Authorization', auth(managerToken))
+      .expect(200);
+    expect(OverviewReportSchema.safeParse(response.body).success).toBe(true);
+  });
+  it('employeeGets403OnReports', async () => {
+    await request(server())
+      .get('/api/reports/overview')
+      .set('Authorization', auth(employeeToken))
+      .expect(403);
+  });
+  it('trendsRejectsTooManyDays400', async () => {
+    await request(server())
+      .get('/api/reports/trends?days=91')
+      .set('Authorization', auth(managerToken))
+      .expect(400);
+  });
+  it('listFiltersBySlaBreached', async () => {
+    await report();
+    const response = await request(server())
+      .get('/api/incidents?sla=BREACHED')
+      .set('Authorization', auth(adminToken))
+      .expect(200);
+    expect(response.body).toEqual([]);
+  });
+  it('reportingNotifiesAssignedTechnicianInbox', async () => {
+    await report();
+    const response = await request(server())
+      .get('/api/notifications')
+      .set('Authorization', auth(techToken))
+      .expect(200);
+    expect(response.body.unread).toBe(1);
+    expect(response.body.items[0].title).toContain('assigned to you');
+  });
+  it('markReadClearsUnread', async () => {
+    await report();
+    const response = await request(server())
+      .get('/api/notifications')
+      .set('Authorization', auth(techToken));
+    await request(server())
+      .post(`/api/notifications/${response.body.items[0].id}/read`)
+      .set('Authorization', auth(techToken))
+      .expect(204);
+    const after = await request(server())
+      .get('/api/notifications')
+      .set('Authorization', auth(techToken))
+      .expect(200);
+    expect(after.body.unread).toBe(0);
+  });
+  it('cannotReadOthersNotification404', async () => {
+    await report();
+    const response = await request(server())
+      .get('/api/notifications')
+      .set('Authorization', auth(techToken));
+    await request(server())
+      .post(`/api/notifications/${response.body.items[0].id}/read`)
+      .set('Authorization', auth(otherToken))
+      .expect(404);
+  });
+  it('inboxRequiresAuth401', async () => {
+    await request(server()).get('/api/notifications').expect(401);
+  });
+  it('adminCanTriggerSweep', async () => {
+    const response = await request(server())
+      .post('/api/monitor/sweep')
+      .set('Authorization', auth(adminToken))
+      .expect(200);
+    const report = response.body as Record<string, unknown>;
+    for (const key of [
+      'checked',
+      'slaWarnings',
+      'slaBreaches',
+      'escalations',
+      'skipped',
+      'durationMs',
+    ])
+      expect(typeof report[key]).toBe('number');
+  });
+  it('employeeCannotTriggerSweep', async () => {
+    await request(server())
+      .post('/api/monitor/sweep')
+      .set('Authorization', auth(employeeToken))
+      .expect(403);
   });
   it('employeeReportsAndSeesAutoAssignment', async () => {
     const d = await report();

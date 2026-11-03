@@ -562,3 +562,124 @@ describe('Incident encapsulation', () => {
     expect(incident.pullEvents()[0]?.occurredAt).toBe(supplied);
   });
 });
+
+it('namesInvalidIncidentFieldsAndRules', () => {
+  const inactive = Category.rehydrate({ ...category.toSnapshot(), active: false });
+  const cases: Array<[RegExp, () => unknown]> = [
+    [/title/i, () => Incident.report({ ...reportProps, title: '' })],
+    [/description/i, () => Incident.report({ ...reportProps, description: '' })],
+    [/affectedUsers/i, () => Incident.report({ ...reportProps, affectedUsers: 0 })],
+    [/category/i, () => inState('NEW').classify(inactive, Priority.P1, sla, system, at)],
+    [/assigned/i, () => inState('ASSIGNED').assign(technician, 0, system, at)],
+    [
+      /information request/i,
+      () =>
+        Incident.rehydrate({ ...snapshot('PENDING_INFO'), infoRequests: [] }).provideInfo(
+          'Answer',
+          reporter,
+          at,
+        ),
+    ],
+    [/reason/i, () => inState('RESOLVED').reject('', reporter, at)],
+    [
+      /duplicate/i,
+      () => {
+        const i = inState('CLASSIFIED');
+        i.closeAsDuplicate(i.id, system, at);
+      },
+    ],
+    [
+      /feedback/i,
+      () => {
+        const i = inState('VERIFIED');
+        i.giveFeedback(Rating.of(4), undefined, reporter, at);
+        i.giveFeedback(Rating.of(4), undefined, reporter, at);
+      },
+    ],
+  ];
+  for (const [message, invoke] of cases) {
+    expect(invoke).toThrow(InvalidIncidentException);
+    expect(invoke).toThrow(message);
+  }
+});
+
+it.each([
+  [
+    'provideInfo',
+    'PENDING_INFO',
+    (i: Incident) => i.provideInfo('Answer', other, at),
+    'INCIDENT_VERIFY_OWN',
+  ],
+  ['verify', 'RESOLVED', (i: Incident) => i.verify(other, at), 'INCIDENT_VERIFY_OWN'],
+  [
+    'reject',
+    'RESOLVED',
+    (i: Incident) => i.reject('Still broken', other, at),
+    'INCIDENT_VERIFY_OWN',
+  ],
+  [
+    'feedback',
+    'VERIFIED',
+    (i: Incident) => i.giveFeedback(Rating.of(4), undefined, other, at),
+    'INCIDENT_FEEDBACK',
+  ],
+] as const)('reportsPermissionFor%s', (_action, status, invoke, permission) => {
+  const run = () => invoke(inState(status));
+  expect(run).toThrow(UnauthorizedOperationException);
+  expect(run).toThrow(
+    expect.objectContaining({ details: { actorRole: Role.EMPLOYEE, permission } }),
+  );
+});
+
+it.each(['reprioritise', 'giveFeedback'] as const)('reportsIllegal%sAction', (action) => {
+  const run = () =>
+    action === 'reprioritise'
+      ? inState('NEW').reprioritise(Priority.P1, sla, system, at)
+      : inState('NEW').giveFeedback(Rating.of(4), undefined, reporter, at);
+  expect(run).toThrow(InvalidStateTransitionException);
+  expect(run).toThrow(expect.objectContaining({ details: { from: 'NEW', action } }));
+});
+
+it('preservesAbsentOptionalSnapshotFields', () => {
+  const incident = inState('IN_PROGRESS');
+  incident.resolve('Fixed', undefined, assignee, at);
+  expect(incident.toSnapshot().resolution).not.toHaveProperty('rootCause');
+  incident.verify(reporter, at);
+  incident.giveFeedback(Rating.of(4), undefined, reporter, at);
+  expect(incident.toSnapshot().feedback).not.toHaveProperty('comment');
+  incident.close(reporter, at);
+  expect(incident.toSnapshot().closure).not.toHaveProperty('duplicateOfId');
+});
+
+it('preservesEarlierAnswersWhenAnsweringLaterRequest', () => {
+  const incident = inState('IN_PROGRESS');
+  incident.requestInfo('First?', assignee, at);
+  incident.provideInfo('First answer', reporter, at);
+  incident.requestInfo('Second?', assignee, at);
+  incident.provideInfo('Second answer', reporter, at);
+  expect(incident.toSnapshot().infoRequests.map((request) => request.answer)).toEqual([
+    'First answer',
+    'Second answer',
+  ]);
+});
+
+it('supportsLifecycleActionsWhenNoSlaClockExists', () => {
+  const withoutClock = (status: IncidentStatus) =>
+    Incident.rehydrate({ ...snapshot(status), slaClock: null });
+  const unprioritised = Incident.rehydrate({
+    ...snapshot('CLASSIFIED'),
+    priority: null,
+    slaClock: null,
+  });
+  unprioritised.reprioritise(Priority.P1, sla, system, at);
+  expect(unprioritised.priority()).toBe(Priority.P1);
+  const assigned = withoutClock('ASSIGNED');
+  assigned.acknowledge(assignee, at);
+  expect(assigned.status()).toBe('ACKNOWLEDGED');
+  const progress = withoutClock('IN_PROGRESS');
+  progress.requestInfo('Question?', assignee, at);
+  progress.provideInfo('Answer', reporter, at);
+  progress.resolve('Fixed', undefined, assignee, at);
+  progress.reject('Still broken', reporter, at);
+  expect(progress.status()).toBe('REOPENED');
+});

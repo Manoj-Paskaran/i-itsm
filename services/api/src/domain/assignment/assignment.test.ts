@@ -14,6 +14,7 @@ import {
   ExperienceBasedStrategy,
   LoadBasedStrategy,
   RoundRobinStrategy,
+  Recommendation,
   SkillBasedStrategy,
   TechnicianAssigner,
   TechnicianLoad,
@@ -208,5 +209,135 @@ describe('assignment rules', () => {
     expect(new Set(result.map((r) => r.technicianId)).size).toBe(loads.length);
     expect(result.every((r) => r.score >= 0 && r.score <= 1)).toBe(true);
     expect(result.map((r) => r.score)).toEqual(result.map((r) => r.score).sort((a, b) => b - a));
+  });
+});
+
+describe('assignment diagnostics and boundaries', () => {
+  it('selectsTheFirstRegisteredStrategyAndRejectsMissingOrDuplicateNames', () => {
+    const registry = new AssignmentStrategyRegistry();
+    expect(registry.names()).toEqual([]);
+    expect(() => registry.active()).toThrow(InvalidInputException);
+    expect(() => registry.active()).toThrow(/active assignment strategy/i);
+    const first = new SkillBasedStrategy();
+    registry.register(first);
+    registry.register(new LoadBasedStrategy());
+    expect(registry.active()).toBe(first);
+    for (const [action, message, details] of [
+      [() => registry.register(first), /duplicate assignment strategy/i, { name: first.name }],
+      [() => registry.use('missing'), /unknown assignment strategy/i, { name: 'missing' }],
+    ] as const) {
+      expect(action).toThrow(InvalidInputException);
+      expect(action).toThrow(message);
+      try {
+        action();
+      } catch (error) {
+        expect(error).toMatchObject({ details });
+      }
+    }
+  });
+  it('usesStableStrategyNamesAndExplainsSkillMatches', () => {
+    expect(new SkillBasedStrategy().name).toBe('skill-based');
+    expect(new ExperienceBasedStrategy().name).toBe('experience-based');
+    expect(
+      new SkillBasedStrategy().rank(context([loads[0]!, loads[1]!])).map((r) => r.reasons),
+    ).toEqual([['has database skill'], ['lacks database skill']]);
+  });
+  it('identifiesInvalidScoreLoadAndRecommendationLimit', () => {
+    const assigner = new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults());
+    for (const [action, field] of [
+      [() => new Recommendation(asha.id(), -1, [], 'test'), 'score'],
+      [() => new TechnicianLoad(asha, -1), 'activeIncidents'],
+      [() => assigner.recommend(context(), 1.5), 'limit'],
+    ] as const) {
+      expect(action).toThrow(InvalidInputException);
+      expect(action).toThrow(new RegExp(field));
+    }
+    expect(assigner.recommend(context(), 0)).toEqual([]);
+  });
+  it('sortsRoundRobinCandidatesRegardlessOfInputOrderAndHandlesEmptyLists', () => {
+    const strategy = new RoundRobinStrategy();
+    expect(strategy.rank(context([]))).toEqual([]);
+    for (const candidates of [
+      [loads[2]!, loads[0]!, loads[1]!],
+      [loads[1]!, loads[2]!, loads[0]!],
+    ]) {
+      expect(strategy.rank(context(candidates)).map((r) => r.technicianId)).toEqual([
+        asha.id(),
+        ben.id(),
+        chen.id(),
+      ]);
+    }
+    strategy.recordAssignment(chen.id());
+    expect(strategy.rank(context([loads[1]!, loads[0]!]))[0]?.technicianId).toBe(asha.id());
+    strategy.recordAssignment(asUserId('a'));
+    expect(strategy.rank(context([loads[1]!, loads[0]!]))[0]?.technicianId).toBe(asha.id());
+  });
+  it('ordersEqualScoresByTechnicianIdInEitherInputOrder', () => {
+    for (const candidates of [
+      [loads[1]!, loads[3]!],
+      [loads[3]!, loads[1]!],
+    ]) {
+      expect(new LoadBasedStrategy().rank(context(candidates)).map((r) => r.technicianId)).toEqual([
+        ben.id(),
+        dev.id(),
+      ]);
+    }
+  });
+  it('acceptsTwoCompositePartsAndGatesOnlyScoresBelowHalf', () => {
+    const fixed = (score: number) => ({
+      name: 'fixed',
+      rank: () => [new Recommendation(asha.id(), score, ['first', 'extra'], 'fixed')],
+    });
+    for (const [score, expected] of [
+      [0.499, 0.375],
+      [0.5, 0.75],
+    ] as const) {
+      const composite = new CompositeAssignmentStrategy([
+        { strategy: fixed(score), weight: 1, required: true },
+        { strategy: fixed(1), weight: 1 },
+      ]);
+      const result = composite.rank(context([loads[0]!]))[0]!;
+      expect(result.score).toBe(expected);
+      expect(result.reasons).toEqual(['first', 'first']);
+    }
+  });
+  it('normalizesVeryLargeUnequalCompositeWeights', () => {
+    const composite = new CompositeAssignmentStrategy([
+      { strategy: new SkillBasedStrategy(), weight: Number.MAX_VALUE },
+      { strategy: new LoadBasedStrategy(), weight: Number.MAX_VALUE / 2 },
+    ]);
+    expect(composite.rank(context([loads[0]!]))[0]?.score).toBe(0.932);
+  });
+  it('reportsInvalidCompositeParts', () => {
+    const parts = [{ strategy: new LoadBasedStrategy(), weight: 0 }];
+    const action = () => new CompositeAssignmentStrategy(parts);
+    expect(action).toThrow(InvalidInputException);
+    expect(action).toThrow(/strategies/i);
+    try {
+      action();
+    } catch (error) {
+      expect(error).toMatchObject({ details: { parts } });
+    }
+  });
+  it('reportsTheLeastLoadedFullTechnicianAndBreaksTiesById', () => {
+    const assigner = new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults());
+    const fullA = new TechnicianLoad(asha, 10);
+    const fullB = new TechnicianLoad(ben, 3);
+    const fullC = new TechnicianLoad(chen, 4);
+    for (const [candidates, id, active, max] of [
+      [[fullA, fullB], ben.id(), 3, 3],
+      [[new TechnicianLoad(ben, 4), new TechnicianLoad(asha, 6)], asha.id(), 6, 5],
+      [[new TechnicianLoad(asha, 6), new TechnicianLoad(ben, 4)], asha.id(), 6, 5],
+      [[fullC, fullB], ben.id(), 3, 3],
+      [[fullB, fullC], ben.id(), 3, 3],
+    ] as const) {
+      const action = () => assigner.pick(context([...candidates]));
+      expect(action).toThrow(WorkloadExceededException);
+      try {
+        action();
+      } catch (error) {
+        expect(error).toMatchObject({ details: { technicianId: id, active, max } });
+      }
+    }
   });
 });

@@ -7,6 +7,7 @@ import {
   EscalationLevel,
   EscalationPolicy,
   EscalationRequest,
+  TechnicianLevelHandler,
 } from './index.js';
 
 const chain = EscalationChainFactory.create();
@@ -74,4 +75,58 @@ describe('escalation chain', () => {
       EscalationLevel.IT_MANAGER,
     ]);
   });
+});
+
+it('formatsEscalationReasonsWithThresholdsAndDestination', () => {
+  expect(check(301)?.reason).toBe('P1 unacknowledged for 301 s (threshold 5 min) → Team Lead');
+  expect(check(600)?.reason).toBe(
+    'P1 unacknowledged for 10 min (threshold 10 min) → System Administrator',
+  );
+  expect(check(1200)?.reason).toBe('P1 unacknowledged for 20 min (threshold 20 min) → IT Manager');
+  expect(check(21, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())?.reason).toBe(
+    'P1 unacknowledged for 21 s (threshold 20 s) → Team Lead',
+  );
+});
+
+it('keepsEscalationRequestAndDecisionImmutable', () => {
+  const request = new EscalationRequest(
+    asIncidentId('incident'),
+    Priority.P1,
+    EscalationLevel.TECHNICIAN,
+    Duration.ofSeconds(300),
+  );
+  expect(Object.isFrozen(request)).toBe(true);
+  expect(Object.isFrozen(chain.handle(request, policy))).toBe(true);
+});
+
+it('rejectsMalformedAndNonAscendingThresholds', () => {
+  const t = policy.thresholdsFor(Priority.P1);
+  const valid = { P1: t, P2: t, P3: t, P4: t };
+  const invalid = [
+    undefined,
+    [t[0], t[1]],
+    [t[0], 'invalid', t[2]],
+    [t[0], t[1], t[1]],
+    [t[0], t[2], t[1]],
+  ];
+  for (const value of invalid) {
+    const build = () =>
+      new EscalationPolicy({ ...valid, P1: value } as unknown as ConstructorParameters<
+        typeof EscalationPolicy
+      >[0]);
+    expect(build).toThrow(InvalidInputException);
+    expect(build).toThrow(/threshold/i);
+    expect(build).toThrow(expect.objectContaining({ details: { priority: 'P1' } }));
+  }
+  expect(() => new EscalationPolicy(valid)).not.toThrow();
+});
+
+it('endsUnmatchedChainWithoutAnEscalation', () => {
+  const request = new EscalationRequest(
+    asIncidentId('incident'),
+    Priority.P1,
+    EscalationLevel.TECHNICIAN,
+    Duration.ofMinutes(5),
+  );
+  expect(new TechnicianLevelHandler().handle(request, policy)).toBeNull();
 });

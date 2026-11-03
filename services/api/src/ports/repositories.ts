@@ -19,6 +19,10 @@ export interface Repository<T, Id> {
   save(entity: T): Promise<void>;
 }
 export interface IncidentSearchFilter {
+  from?: Date;
+  to?: Date;
+  categoryId?: CategoryId;
+  sla?: 'BREACHED' | 'WITHIN_SLA';
   reporterId?: UserId;
   assigneeId?: UserId;
   status?: string;
@@ -38,20 +42,36 @@ export interface IncidentRepository extends Repository<Incident, IncidentId> {
   listOpenClassified(): Promise<Incident[]>;
 }
 export interface UserRepository extends Repository<User, UserId> {
+  listAll(): Promise<User[]>;
   findByEmail(email: Email): Promise<User | null>;
   listTechnicians(): Promise<Technician[]>;
   listByRole(role: Role): Promise<User[]>;
 }
 export interface ItServiceRepository extends Repository<ItService, ItServiceId> {
+  listAll(): Promise<ItService[]>;
   listActive(): Promise<ItService[]>;
 }
 export interface CategoryRepository extends Repository<Category, CategoryId> {
+  listAll(): Promise<Category[]>;
   listActive(): Promise<Category[]>;
 }
 export interface SlaPolicyRepository extends Repository<SlaPolicy, SlaPolicyId> {
   listAll(): Promise<SlaPolicy[]>;
 }
+export interface AuditSearchFilter {
+  incidentId?: IncidentId;
+  actorId?: UserId;
+  action?: string;
+  from?: Date;
+  to?: Date;
+  limit: number;
+}
+export interface AuditSearchResult {
+  record: AuditRecord;
+  incidentNumber: string;
+}
 export interface AuditRepository extends AuditSink {
+  search(filter: AuditSearchFilter): Promise<AuditSearchResult[]>;
   listByIncident(incidentId: IncidentId): Promise<AuditRecord[]>;
 }
 

@@ -13,6 +13,9 @@ export class MemoryUsers implements UserRepository {
   async save(user: User) {
     this.users.set(user.id(), user);
   }
+  async listAll() {
+    return [...this.users.values()];
+  }
   async listTechnicians(): Promise<Technician[]> {
     return [];
   }

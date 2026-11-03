@@ -8,6 +8,8 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/coverage/**',
+      '**/.stryker-tmp/**',
+      '**/reports/**',
       '**/.turbo/**',
       '**/node_modules/**',
       '**/.pnpm-store/**',

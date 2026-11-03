@@ -6,6 +6,7 @@ export * from './technician-unavailable-exception.js';
 export * from './workload-exceeded-exception.js';
 export * from './missing-sla-configuration-exception.js';
 export * from './service-not-found-exception.js';
+export * from './config-item-not-found-exception.js';
 export * from './incident-not-found-exception.js';
 export * from './invalid-credentials-exception.js';
 export * from './unauthorized-operation-exception.js';

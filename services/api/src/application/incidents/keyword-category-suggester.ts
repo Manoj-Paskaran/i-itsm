@@ -14,14 +14,30 @@ const keywords: Record<string, readonly string[]> = {
   STORAGE: ['disk', 'storage', 'backup', 'upload', 'quota'],
 };
 
+const stem = (word: string) => word.replace(/(?:ing|s)$/, '');
+
 export class KeywordCategorySuggester implements CategorySuggester {
   suggest(text: string, categories: readonly Category[]) {
     const lower = text.toLowerCase();
     let best: Category | undefined;
     let hits = 0;
     for (const category of categories) {
-      const words = keywords[category.toSnapshot().code] ?? [];
-      const count = words.filter((word) => lower.includes(word)).length;
+      const snapshot = category.toSnapshot();
+      const words = keywords[snapshot.code] ?? [];
+      const categoryWords = `${snapshot.name} ${snapshot.code}`
+        .toLowerCase()
+        .split(/[^a-z]+/)
+        .filter((word) => word.length >= 4)
+        .map(stem);
+      const inputWords = new Set(
+        lower
+          .split(/[^a-z]+/)
+          .filter((word) => word.length >= 4)
+          .map(stem),
+      );
+      const count =
+        words.filter((word) => lower.includes(word)).length +
+        new Set(categoryWords.filter((word) => inputWords.has(word))).size;
       if (count > hits) {
         best = category;
         hits = count;

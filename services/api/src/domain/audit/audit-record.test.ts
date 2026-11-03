@@ -19,6 +19,8 @@ describe('audit record', () => {
     expect(() => AuditRecord.create({ ...props, description: '' })).toThrow(InvalidInputException));
   it('round-trips snapshots', () => {
     const a = AuditRecord.create(props);
+    expect(a.toSnapshot().action).toBe('created');
+    expect(a.toSnapshot().description).toBe('Created');
     expect(AuditRecord.rehydrate(a.toSnapshot()).toSnapshot()).toEqual(a.toSnapshot());
   });
 });

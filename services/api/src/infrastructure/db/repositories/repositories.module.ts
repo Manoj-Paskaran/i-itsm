@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import {
+  REPORT_QUERIES,
   AUDIT_REPOSITORY,
+  NOTIFICATION_REPOSITORY,
   CATEGORY_REPOSITORY,
   INCIDENT_REPOSITORY,
   IT_SERVICE_REPOSITORY,
@@ -14,7 +16,12 @@ import { DrizzleIncidentRepository } from './incident.repository.js';
 import { DrizzleSlaPolicyRepository } from './sla-policy.repository.js';
 import { DrizzleUserRepository } from './user.repository.js';
 
+import { DrizzleReportQueries } from './report-queries.js';
+import { DrizzleNotificationRepository } from './notification.repository.js';
+
 const providers = [
+  { provide: REPORT_QUERIES, useClass: DrizzleReportQueries },
+  { provide: NOTIFICATION_REPOSITORY, useClass: DrizzleNotificationRepository },
   { provide: INCIDENT_REPOSITORY, useClass: DrizzleIncidentRepository },
   { provide: USER_REPOSITORY, useClass: DrizzleUserRepository },
   { provide: IT_SERVICE_REPOSITORY, useClass: DrizzleItServiceRepository },

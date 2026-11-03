@@ -11,7 +11,7 @@ export interface ItServiceSnapshot {
 export class ItService {
   private readonly serviceId: ItServiceId;
   private serviceName: string;
-  private readonly description: string | undefined;
+  private description: string | undefined;
   private criticality: BusinessCriticality;
   private active: boolean;
   private constructor(s: ItServiceSnapshot) {
@@ -44,6 +44,12 @@ export class ItService {
   }
   changeCriticality(value: BusinessCriticality): void {
     this.criticality = value;
+  }
+  changeDescription(value: string): void {
+    this.description = text(value, 'description');
+  }
+  activate(): void {
+    this.active = true;
   }
   deactivate(): void {
     this.active = false;

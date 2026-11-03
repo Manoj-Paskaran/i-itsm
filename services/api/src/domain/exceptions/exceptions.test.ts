@@ -60,6 +60,13 @@ const cases = [
     { serviceId: 's' },
   ],
   [
+    new E.ConfigItemNotFoundException('Category', 'c'),
+    E.NotFoundException,
+    'not_found',
+    'CONFIG_ITEM_NOT_FOUND',
+    { itemKind: 'Category', id: 'c' },
+  ],
+  [
     new E.IncidentNotFoundException('i'),
     E.NotFoundException,
     'not_found',
@@ -116,5 +123,9 @@ describe('exception hierarchy', () => {
   it('preserves infrastructure causes', () => {
     expect(new E.DatabaseFailureException(cause).cause).toBe(cause);
     expect(new E.NetworkFailureException('ml', cause).cause).toBe(cause);
+  });
+  it('includes a supplied reason in technician unavailable messages', () => {
+    expect(new E.TechnicianUnavailableException('on leave').message).toMatch(/on leave/);
+    expect(new E.TechnicianUnavailableException().message).toMatch(/unavailable/i);
   });
 });

@@ -31,6 +31,9 @@ import {
   IncidentClosed,
   FeedbackGiven,
 } from './incident-events.js';
+import { IncidentEscalated } from './incident-escalated.js';
+import { EscalationLevel } from '../escalation/index.js';
+import { Role } from '../users/index.js';
 import type { EventContext } from './domain-event.js';
 
 function happyPath(): Incident {
@@ -171,4 +174,19 @@ const descriptions = [
 
 it.each(descriptions)('eventDescribesItsAuditFact %s', (event, description) => {
   expect(event.describe()).toBe(description);
+});
+
+it('freezesEveryPublishedIncidentEvent', () => {
+  for (const [event] of descriptions) expect(Object.isFrozen(event)).toBe(true);
+});
+
+it('freezesEscalationEvents', () => {
+  const event = new IncidentEscalated(
+    context,
+    EscalationLevel.TECHNICIAN,
+    EscalationLevel.TEAM_LEAD,
+    Role.TEAM_LEAD,
+    'Escalated',
+  );
+  expect(Object.isFrozen(event)).toBe(true);
 });

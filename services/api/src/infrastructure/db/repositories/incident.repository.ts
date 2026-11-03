@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, isNotNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, ilike, isNotNull, ne, or, sql } from 'drizzle-orm';
 import {
   ConcurrentModificationException,
   DatabaseFailureException,
@@ -42,6 +42,12 @@ export class DrizzleIncidentRepository implements IncidentRepository {
   async search(filter: IncidentSearchFilter): Promise<Incident[]> {
     try {
       const conditions = [
+        filter.from ? gte(incidents.createdAt, filter.from) : undefined,
+        filter.to ? lte(incidents.createdAt, filter.to) : undefined,
+        filter.categoryId ? eq(incidents.categoryId, filter.categoryId) : undefined,
+        filter.sla
+          ? sql`${incidents.slaBreached} is not null and coalesce(${incidents.closureReason} <> 'DUPLICATE', true) and cardinality(${incidents.slaBreached}) ${filter.sla === 'BREACHED' ? sql`> 0` : sql`= 0`}`
+          : undefined,
         filter.reporterId ? eq(incidents.reporterId, filter.reporterId) : undefined,
         filter.assigneeId ? eq(incidents.assigneeId, filter.assigneeId) : undefined,
         filter.status ? sql`${incidents.status} = ${filter.status}` : undefined,

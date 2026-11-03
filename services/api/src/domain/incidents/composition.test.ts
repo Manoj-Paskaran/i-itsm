@@ -70,3 +70,30 @@ describe('Incident composition', () => {
     expect(closure).toMatchObject({ reason: 'RESOLVED', closedBy: reporterId, at: later });
   });
 });
+
+it('namesInvalidCompositionFields', () => {
+  const cases: Array<[string, () => unknown]> = [
+    ['question', () => new InfoRequest('', technicianId, at)],
+    ['answer', () => new InfoRequest('Question', technicianId, at).answer('', at)],
+    ['note', () => new InvestigationNote(technicianId, '', at)],
+    ['summary', () => new Resolution('', undefined, technicianId, at)],
+    ['comment', () => new Feedback(Rating.of(4), 'x'.repeat(2001), at)],
+    [
+      'answer',
+      () =>
+        InfoRequest.rehydrate({
+          question: 'Question',
+          askedBy: technicianId,
+          askedAt: at.toIso(),
+          answer: 'yes',
+        }),
+    ],
+  ];
+  for (const [field, invoke] of cases) {
+    expect(invoke).toThrow(InvalidIncidentException);
+    expect(invoke).toThrow(new RegExp(field, 'i'));
+  }
+  const answered = new InfoRequest('Question', technicianId, at);
+  answered.answer('Yes', at);
+  expect(() => answered.answer('No', at)).toThrow(/answered/i);
+});

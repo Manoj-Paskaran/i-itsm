@@ -24,6 +24,7 @@ import {
   asSlaPolicyId,
   asUserId,
   FixedClock,
+  Duration,
 } from '../../domain/shared/index.js';
 import { SlaPolicy } from '../../domain/sla/index.js';
 import { Admin, Availability, Employee, Technician } from '../../domain/users/index.js';
@@ -87,6 +88,7 @@ async function setup(available = true) {
   await services.save(service);
   for (const c of [category, app, database]) await categories.save(c);
   await policies.save(SlaPolicy.specDefault(asSlaPolicyId('default')));
+  const clock = new FixedClock(at);
   const events = new InProcessEventPublisher();
   let n = 0;
   events.subscribe(new AuditRecorder(audit, () => asAuditId(`audit-${++n}`)));
@@ -101,10 +103,10 @@ async function setup(available = true) {
     new PriorityStrategyRegistry([matrix], matrix.name),
     new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults()),
     events,
-    new FixedClock(at),
+    clock,
     audit,
   );
-  return { svc, incidents, users, services, audit, tech };
+  return { svc, incidents, users, services, audit, tech, clock };
 }
 describe('IncidentService rules', () => {
   it('reportClassifiesPrioritisesAndAssignsInOneCall', async () => {
@@ -204,6 +206,16 @@ describe('IncidentService rules', () => {
     await svc.feedback(employee, d.id, 5, 'Great');
     expect((await svc.close(employee, d.id)).status).toBe('CLOSED');
   });
+  it('commandRecordsSlaBreachEvenWithoutAMonitorSweep', async () => {
+    const { svc, audit, clock } = await setup();
+    const d = await svc.report(employee, cmd);
+    clock.advance(Duration.ofHours(25));
+    await svc.acknowledge(technician, d.id);
+    const records = await audit.listByIncident(d.id as Parameters<typeof audit.listByIncident>[0]);
+    const actions = records.map((r) => r.toSnapshot().action);
+    expect(actions).toContain('SlaBreached');
+    expect(actions.indexOf('SlaBreached')).toBeLessThan(actions.indexOf('IncidentAcknowledged'));
+  });
   it('rejectReopensIncident', async () => {
     const { svc } = await setup();
     const d = await svc.report(employee, cmd);
@@ -259,4 +271,27 @@ describe('KeywordCategorySuggester rules', () => {
       confidence: 0.2,
     });
   });
+});
+
+it('listFiltersByDateRangeCategoryAndSla', async () => {
+  const { incidents, svc } = await setup();
+  const { Incident } = await import('../../domain/incidents/index.js');
+  const { snapshot } = await import('../../domain/incidents/test-fixtures.js');
+  const base = snapshot('ASSIGNED');
+  await incidents.save(
+    Incident.rehydrate({ ...base, slaClock: { ...base.slaClock!, breached: ['RESPONSE'] } }),
+  );
+  expect(
+    await svc.list(admin, {
+      limit: 10,
+      from: '2026-11-03',
+      to: '2026-11-03',
+      categoryId: base.categoryId!,
+      sla: 'BREACHED',
+    }),
+  ).toHaveLength(1);
+  expect(await svc.list(admin, { limit: 10, from: '2026-11-04', sla: 'BREACHED' })).toHaveLength(0);
+  expect(
+    await svc.list(admin, { limit: 10, categoryId: base.categoryId!, sla: 'WITHIN_SLA' }),
+  ).toHaveLength(0);
 });

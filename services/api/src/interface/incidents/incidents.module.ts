@@ -54,6 +54,12 @@ function nextAuditId() {
 @Module({
   imports: [RepositoriesModule],
   controllers: [IncidentsController, CatalogController],
+  exports: [
+    SystemClock,
+    InProcessEventPublisher,
+    PriorityStrategyRegistry,
+    AssignmentStrategyRegistry,
+  ],
   providers: [
     {
       provide: PriorityStrategyRegistry,
