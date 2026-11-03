@@ -5,12 +5,13 @@ import { HealthResponseSchema } from '@itsm/contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../app.module.js';
+import { configureApp } from '../configure-app.js';
 
 describe('GET /health', () => {
   let app: INestApplication;
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = module.createNestApplication();
+    app = configureApp(module.createNestApplication());
     await app.init();
   });
   afterAll(async () => {

@@ -1,0 +1,403 @@
+// Each tuple is a report, its description, the fix, and the underlying cause.
+// Investigation notes capture concrete checks performed while diagnosing each category.
+export const investigationNotes = {
+  HARDWARE: [
+    'Reviewed the device event log; repeated battery controller resets preceded shutdown.',
+    'Ran the vendor memory diagnostic overnight; no DIMM errors were reported.',
+    'Checked dock firmware and USB-C link negotiation; the display link retrained on movement.',
+    'Inspected thermal telemetry under video-call load; CPU package temperature reached 98°C.',
+  ],
+  SOFTWARE: [
+    'Collected the application crash dump; the faulting module was the workbook rendering plugin.',
+    'Compared the user profile with a clean profile; the launch failure follows the damaged cache.',
+    'Checked extension policy and browser console; the SSO helper was blocked by the legacy add-on.',
+    'Reviewed endpoint update logs; the definition job was waiting on a stopped update service.',
+  ],
+  NETWORK: [
+    'Checked VPN gateway logs; the tunnel was closed after the configured 15-minute idle timeout.',
+    'Ran packet captures on the access switch; CRC errors clustered on the affected port.',
+    'Queried internal DNS from the VPN subnet; clients were receiving the public resolver address.',
+    'Inspected the mail relay queue; deferred messages were accumulating behind one slow destination.',
+  ],
+  DATABASE: [
+    'Checked connection pool metrics — 98% saturation on db-primary during checkout traffic.',
+    'Compared replica replay LSN with the primary; the reporting replica was 14 minutes behind.',
+    'Reviewed pg_stat_activity; a long-running transaction held row locks on payment_records.',
+    'Explained the customer lookup query; the planner chose a sequential scan on the missing index.',
+  ],
+  CLOUD: [
+    'Checked object-store audit events; uploads were sent to the retired regional endpoint.',
+    'Reviewed sync worker queue depth; retry backlog grew after the storage token refresh failed.',
+    'Compared group membership with bucket policy; the department role had no write binding.',
+    'Inspected instance health checks; the storage node was failing readiness after disk pressure.',
+  ],
+  SECURITY: [
+    'Reviewed sign-in telemetry; the alert came from an unfamiliar ASN with impossible-travel timing.',
+    'Isolated the endpoint and inspected quarantine metadata; the attachment matched a known macro dropper.',
+    'Compared privileged group membership with the access request; the admin grant had no approval record.',
+    'Checked certificate transparency and TLS expiry; the portal certificate had expired overnight.',
+  ],
+  AUTHENTICATION: [
+    'Compared SAML assertion audience with the service provider config; the callback URI had a stale path.',
+    'Reviewed MFA delivery logs; the registered device token had expired and no push was enqueued.',
+    'Checked identity audit events; the account was locked after five failed directory binds.',
+    'Inspected token claims and policy; the session max-age was set to five minutes for this group.',
+  ],
+  APPLICATION: [
+    'Traced the HR profile save request; API validation rejected the optional department code as required.',
+    'Checked application worker health and queue depth; notification jobs were stuck in retry state.',
+    'Compared report role claims with the query filter; the employee group mapping was absent.',
+    'Reviewed payment callback logs; signature validation used the previous gateway secret version.',
+  ],
+  STORAGE: [
+    'Checked volume metrics; inode usage reached 100% while byte capacity remained below threshold.',
+    'Compared file version manifests; both clients uploaded changes from stale offline revisions.',
+    'Reviewed backup job logs; the object-store credential expired before the scheduled snapshot.',
+    'Mounted the share from a healthy node; the affected storage mount had dropped after a network reset.',
+  ],
+} as const;
+
+export const templates = {
+  HARDWARE: [
+    [
+      'Laptop will not power on',
+      'The laptop does not start after pressing the power button.',
+      'Replaced the failed power adapter.',
+      'Power adapter failure',
+    ],
+    [
+      'Laptop battery drains quickly',
+      'The battery lasts less than an hour during normal work.',
+      'Replaced the worn battery.',
+      'Battery capacity degradation',
+    ],
+    [
+      'Laptop screen flickers',
+      'The display flickers when the lid is moved.',
+      'Reseated the display cable.',
+      'Loose display cable',
+    ],
+    [
+      'Keyboard keys not responding',
+      'Several keys on the employee laptop do not register.',
+      'Replaced the keyboard assembly.',
+      'Keyboard contact failure',
+    ],
+    [
+      'Docking station loses monitor',
+      'The external monitor disconnects from the laptop dock.',
+      'Updated the dock firmware.',
+      'Outdated docking firmware',
+    ],
+    [
+      'Laptop overheating under load',
+      'The laptop shuts down during video calls and feels hot.',
+      'Cleaned the cooling fan and vents.',
+      'Dust blocking airflow',
+    ],
+  ],
+  SOFTWARE: [
+    [
+      'Spreadsheet application crashes',
+      'The spreadsheet application closes when opening a workbook.',
+      'Repaired the office installation.',
+      'Corrupt application files',
+    ],
+    [
+      'PDF reader fails to launch',
+      'The PDF reader stops responding immediately after launch.',
+      'Reinstalled the PDF reader.',
+      'Damaged user configuration',
+    ],
+    [
+      'Browser extension blocks intranet',
+      'The intranet page stays blank in the corporate browser.',
+      'Disabled the conflicting extension.',
+      'Incompatible browser extension',
+    ],
+    [
+      'Office update stuck',
+      'The office software update remains pending after restart.',
+      'Cleared the update cache and retried.',
+      'Corrupt update cache',
+    ],
+    [
+      'Video meeting audio missing',
+      'Meeting software cannot select the laptop microphone.',
+      'Restored microphone permissions.',
+      'Operating system privacy setting',
+    ],
+    [
+      'Antivirus update fails',
+      'The endpoint reports that antivirus definitions are outdated.',
+      'Restarted the update service.',
+      'Stalled update service',
+    ],
+  ],
+  NETWORK: [
+    [
+      'VPN connection drops',
+      'The VPN disconnects repeatedly while working remotely.',
+      'Adjusted the VPN gateway timeout.',
+      'Gateway idle timeout misconfiguration',
+    ],
+    [
+      'VPN cannot connect',
+      'The VPN client fails to establish a tunnel from home.',
+      'Renewed the gateway certificate chain.',
+      'Expired intermediate certificate',
+    ],
+    [
+      'Email delivery delayed',
+      'Messages to colleagues arrive several minutes late.',
+      'Cleared the mail relay queue.',
+      'Mail relay queue congestion',
+    ],
+    [
+      'Office network is intermittent',
+      'Connections to internal services drop throughout the morning.',
+      'Replaced the faulty switch port.',
+      'Switch port errors',
+    ],
+    [
+      'DNS lookup fails over VPN',
+      'Internal hostnames do not resolve while connected to VPN.',
+      'Corrected the VPN DNS configuration.',
+      'Incorrect DNS server assignment',
+    ],
+    [
+      'Mail server connection times out',
+      'The email client cannot reach the corporate mail server.',
+      'Restored the firewall rule.',
+      'Firewall rule removed during maintenance',
+    ],
+  ],
+  DATABASE: [
+    [
+      'Customer queries are slow',
+      'Customer records take unusually long to load.',
+      'Rebuilt the affected index.',
+      'Fragmented customer index',
+    ],
+    [
+      'Database connection pool exhausted',
+      'The application cannot obtain a customer database connection.',
+      'Released idle connections and tuned the pool.',
+      'Leaked idle connections',
+    ],
+    [
+      'Customer database replica lag',
+      'Recent customer changes are missing from reports.',
+      'Restarted replication and caught up the replica.',
+      'Replication worker stalled',
+    ],
+    [
+      'Payment transactions failing',
+      'Payment transactions fail when checkout reads customer records.',
+      'Restored the database connection pool.',
+      'Connection pool exhaustion',
+    ],
+    [
+      'Checkout timeout',
+      'Checkout times out while the payment gateway retrieves customer data.',
+      'Rebuilt the payment lookup index.',
+      'Missing payment lookup index',
+    ],
+    [
+      'Unable to complete payment',
+      'Customers cannot complete payment because database requests time out.',
+      'Removed the blocking database transaction.',
+      'Long running transaction held locks',
+    ],
+  ],
+  CLOUD: [
+    [
+      'Cloud storage upload fails',
+      'Uploads to the shared cloud workspace fail midway.',
+      'Restored the storage service configuration.',
+      'Incorrect storage endpoint',
+    ],
+    [
+      'Cloud storage access denied',
+      'A team cannot open its shared cloud folder.',
+      'Restored the group access policy.',
+      'Missing group policy binding',
+    ],
+    [
+      'Cloud sync delayed',
+      'Changes to shared documents are not appearing for colleagues.',
+      'Restarted the sync worker.',
+      'Sync worker backlog',
+    ],
+    [
+      'Cloud storage quota alert',
+      'The department shared folder reports that it is full.',
+      'Archived old exports and adjusted quota.',
+      'Accumulated obsolete exports',
+    ],
+    [
+      'Cloud workspace unavailable',
+      'The cloud storage portal returns a service error.',
+      'Restarted the affected service instance.',
+      'Unhealthy service instance',
+    ],
+    [
+      'Cloud upload link expired',
+      'The upload link expires before the transfer completes.',
+      'Increased the upload token lifetime.',
+      'Token lifetime too short',
+    ],
+  ],
+  SECURITY: [
+    [
+      'Suspicious sign-in alert',
+      'An unfamiliar sign-in location triggered a security alert.',
+      'Revoked sessions and reset credentials.',
+      'Credentials exposed to phishing',
+    ],
+    [
+      'Endpoint security alert',
+      'The laptop security agent reports a quarantined file.',
+      'Removed the file and completed a scan.',
+      'Malicious email attachment',
+    ],
+    [
+      'Account locked after phishing',
+      'The user entered credentials on a suspicious sign-in page.',
+      'Reset credentials and revoked sessions.',
+      'Phishing page credential capture',
+    ],
+    [
+      'Unexpected privileged access',
+      'An account has access to a restricted administration group.',
+      'Removed the unintended group membership.',
+      'Incorrect access group assignment',
+    ],
+    [
+      'Security certificate warning',
+      'The corporate portal shows a certificate warning.',
+      'Renewed and deployed the certificate.',
+      'Expired TLS certificate',
+    ],
+    [
+      'Repeated login attempts detected',
+      'Security monitoring shows repeated failed login attempts.',
+      'Blocked the source and reset the account.',
+      'Password guessing attempts',
+    ],
+  ],
+  AUTHENTICATION: [
+    [
+      'Single sign-on login loop',
+      'The sign-in page returns to login after authentication.',
+      'Corrected the identity provider callback.',
+      'Incorrect callback URL',
+    ],
+    [
+      'Multi-factor prompt missing',
+      'The user never receives the expected verification prompt.',
+      'Re-enrolled the authentication device.',
+      'Stale device registration',
+    ],
+    [
+      'Single sign-on password rejected',
+      'The corporate password is rejected by the sign-in portal.',
+      'Unlocked the account and reset the password.',
+      'Account lockout',
+    ],
+    [
+      'Single sign-on session expires early',
+      'The user must sign in again every few minutes.',
+      'Corrected the session lifetime.',
+      'Incorrect session policy',
+    ],
+    [
+      'New employee cannot sign in',
+      'A newly provisioned employee cannot access the sign-in portal.',
+      'Completed the account provisioning.',
+      'Incomplete identity provisioning',
+    ],
+    [
+      'Authenticator code rejected',
+      'Valid one-time codes are rejected at corporate sign-in.',
+      'Corrected time synchronization.',
+      'Device clock drift',
+    ],
+  ],
+  APPLICATION: [
+    [
+      'HR portal leave request fails',
+      'Submitting a leave request produces an error message.',
+      'Corrected the leave approval workflow.',
+      'Invalid workflow configuration',
+    ],
+    [
+      'HR portal profile will not save',
+      'Employee profile changes disappear after saving.',
+      'Deployed a validation fix.',
+      'Profile validation defect',
+    ],
+    [
+      'HR portal report is blank',
+      'The department report opens with no employee data.',
+      'Restored report permissions.',
+      'Missing report role mapping',
+    ],
+    [
+      'Application page loads slowly',
+      'The HR portal dashboard takes too long to load.',
+      'Cleared the application cache.',
+      'Stale application cache',
+    ],
+    [
+      'Payment gateway callback fails',
+      'Payment confirmations are not reflected in the application.',
+      'Corrected the payment callback endpoint.',
+      'Incorrect callback configuration',
+    ],
+    [
+      'Application notification missing',
+      'Employees do not receive HR portal approval notifications.',
+      'Restarted the notification worker.',
+      'Notification worker stalled',
+    ],
+  ],
+  STORAGE: [
+    [
+      'Shared drive is full',
+      'The shared workspace cannot accept new files.',
+      'Archived old files and reclaimed capacity.',
+      'Unmanaged file growth',
+    ],
+    [
+      'Shared folder unavailable',
+      'Employees cannot access a department shared folder.',
+      'Restored the storage mount.',
+      'Storage mount disconnected',
+    ],
+    [
+      'File restore requested',
+      'A recently deleted shared document needs to be restored.',
+      'Restored the document from backup.',
+      'Accidental deletion',
+    ],
+    [
+      'Storage synchronization conflict',
+      'Two versions of a shared document appeared after editing.',
+      'Merged the changes and restored sync.',
+      'Concurrent offline edits',
+    ],
+    [
+      'Storage volume latency',
+      'Opening files from cloud storage takes several minutes.',
+      'Moved the workload to a healthy volume.',
+      'Degraded storage volume',
+    ],
+    [
+      'Backup job failed',
+      'The shared storage backup did not complete overnight.',
+      'Corrected credentials and reran the backup.',
+      'Expired backup credentials',
+    ],
+  ],
+} as const;

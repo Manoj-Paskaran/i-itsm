@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthResponseSchema, type HealthResponse } from '@itsm/contracts';
 import { readFileSync } from 'node:fs';
+import { Public } from '../auth/decorators.js';
 
 const packageVersion: string =
   (
@@ -11,6 +12,7 @@ const packageVersion: string =
 
 @Controller('health')
 export class HealthController {
+  @Public()
   @Get()
   health(): HealthResponse {
     return HealthResponseSchema.parse({

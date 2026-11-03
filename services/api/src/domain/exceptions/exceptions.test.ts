@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import * as E from './index.js';
 const cause = new Error('underlying');
 const cases = [
+  [new E.InvalidTokenException(), E.SecurityException, 'unauthenticated', 'INVALID_TOKEN', {}],
+  [
+    new E.ConcurrentModificationException('i'),
+    E.BusinessRuleException,
+    'conflict',
+    'CONCURRENT_MODIFICATION',
+    { incidentId: 'i' },
+  ],
   [
     new E.InvalidStateTransitionException('NEW', 'close'),
     E.BusinessRuleException,

@@ -12,3 +12,6 @@ export * from './unauthorized-operation-exception.js';
 export * from './invalid-input-exception.js';
 export * from './database-failure-exception.js';
 export * from './network-failure-exception.js';
+export * from './concurrent-modification-exception.js';
+
+export * from './invalid-token-exception.js';
