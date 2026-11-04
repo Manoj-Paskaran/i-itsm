@@ -146,3 +146,23 @@ it('listsAssignedUnacknowledgedForEscalation', async () => {
     [assigned.id, acknowledged.id].sort(),
   );
 });
+it('listsUnresolvedAndResolvedNonDuplicateIncidentsForInsights', async () => {
+  const working = await f.report();
+  f.classify(working);
+  f.assign(working);
+  await f.incidents.save(working);
+  const resolved = await f.report();
+  f.classify(resolved);
+  f.assign(resolved);
+  resolved.acknowledge(f.techActor, at);
+  resolved.startWork(f.techActor, at);
+  resolved.resolve('Restarted the router', 'Router fault', f.techActor, at);
+  await f.incidents.save(resolved);
+  const duplicate = await f.report();
+  f.classify(duplicate);
+  duplicate.closeAsDuplicate(working.id, Actor.system(), at);
+  await f.incidents.save(duplicate);
+  expect((await f.incidents.listUnresolved()).map((i) => i.id)).toEqual([working.id]);
+  expect((await f.incidents.listResolved(10)).map((i) => i.id)).toEqual([resolved.id]);
+  expect(await f.incidents.listResolved(0)).toEqual([]);
+});

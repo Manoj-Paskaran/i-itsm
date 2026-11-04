@@ -33,12 +33,20 @@ export const useStrategies = () =>
 export function useAdminWrite() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ path, method, body }: { path: string; method: 'PUT' | 'PATCH'; body: object }) =>
-      apiFetch(path, { parse: (v: unknown) => v }, { method, body: JSON.stringify(body) }),
-    // Strategy, capacity and availability changes also change who gets suggested.
+    mutationFn: ({
+      path,
+      method,
+      body,
+    }: {
+      path: string;
+      method: 'POST' | 'PUT' | 'PATCH';
+      body: object;
+    }) => apiFetch(path, { parse: (v: unknown) => v }, { method, body: JSON.stringify(body) }),
+    // Strategy, capacity and availability changes also change who gets suggested;
+    // new services and technicians must show in the report form and assignee filter.
     onSuccess: () =>
       Promise.all(
-        ['admin', 'recommendations', 'technicians'].map((key) =>
+        ['admin', 'recommendations', 'technicians', 'services'].map((key) =>
           client.invalidateQueries({ queryKey: [key] }),
         ),
       ),

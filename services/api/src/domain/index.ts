@@ -9,3 +9,4 @@ export * from './events/index.js';
 export * from './assignment/index.js';
 export * from './sla/index.js';
 export * from './escalation/index.js';
+export * from './intelligence/index.js';

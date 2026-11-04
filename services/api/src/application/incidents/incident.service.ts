@@ -41,6 +41,7 @@ import type {
   UserRepository,
 } from '../../ports/index.js';
 import { IncidentViewMapper } from './incident-view-mapper.js';
+import { IncidentVisibility } from './incident-visibility.js';
 
 export class IncidentService {
   private readonly mapper: IncidentViewMapper;
@@ -74,14 +75,7 @@ export class IncidentService {
   }
   private async visible(user: User, id: string): Promise<Incident> {
     const i = await this.incidents.findById(asIncidentId(id));
-    if (
-      !i ||
-      !user.isActive() ||
-      (!user.can(P.INCIDENT_VIEW_ALL) &&
-        i.reporterId() !== user.id() &&
-        i.assigneeId() !== user.id())
-    )
-      throw new IncidentNotFoundException(id);
+    if (!i || !IncidentVisibility.canView(user, i)) throw new IncidentNotFoundException(id);
     return i;
   }
   private async context(i: Incident): Promise<AssignmentContext> {
@@ -195,25 +189,7 @@ export class IncidentService {
       ...(assigneeId ? { assigneeId } : {}),
       ...(reporterId ? { reporterId } : {}),
     });
-    return Promise.all(
-      result.map(async (i) => {
-        const d = await this.detail(i);
-        return {
-          id: d.id,
-          number: d.number,
-          title: d.title,
-          status: d.status,
-          priority: d.priority,
-          service: d.service,
-          category: d.category,
-          reporter: d.reporter,
-          assignee: d.assignee,
-          createdAt: d.createdAt,
-          slaStatus: d.slaStatus,
-          escalationLevel: d.escalationLevel,
-        };
-      }),
-    );
+    return Promise.all(result.map((i) => this.mapper.summary(i)));
   }
   async get(user: User, id: string) {
     return this.detail(await this.visible(user, id));

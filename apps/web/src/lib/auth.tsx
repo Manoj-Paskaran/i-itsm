@@ -1,6 +1,7 @@
 import {
   AuthResponseSchema,
   LoginRequestSchema,
+  RegisterRequestSchema,
   type AuthResponse,
   type AuthUser,
 } from '@itsm/contracts';
@@ -15,6 +16,12 @@ type AuthState = {
 };
 type AuthContextValue = AuthState & {
   login: (email: string, password: string) => Promise<void>;
+  register: (input: {
+    name: string;
+    email: string;
+    password: string;
+    department: string;
+  }) => Promise<void>;
   logout: () => Promise<void>;
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -61,6 +68,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(data.accessToken);
     setState({ status: 'authenticated', user: data.user, token: data.accessToken });
   }
+  /** Self-service sign-up creates an employee account (spec: Employee "Register/login"). */
+  async function register(input: {
+    name: string;
+    email: string;
+    password: string;
+    department: string;
+  }) {
+    const data = await apiFetch('/api/auth/register', AuthResponseSchema, {
+      method: 'POST',
+      body: JSON.stringify(RegisterRequestSchema.parse(input)),
+    });
+    setAccessToken(data.accessToken);
+    setState({ status: 'authenticated', user: data.user, token: data.accessToken });
+  }
   async function logout() {
     try {
       await apiFetch('/api/auth/logout', { parse: (value: unknown) => value }, { method: 'POST' });
@@ -71,7 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ ...state, login, register, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 export function useAuth() {

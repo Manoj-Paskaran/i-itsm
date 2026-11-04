@@ -1,5 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, lte, ilike, isNotNull, ne, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  lte,
+  ilike,
+  inArray,
+  isNotNull,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   ConcurrentModificationException,
   DatabaseFailureException,
@@ -129,6 +143,36 @@ export class DrizzleIncidentRepository implements IncidentRepository {
           this.map(r),
         ),
       );
+    } catch (error) {
+      throw new DatabaseFailureException(error);
+    }
+  }
+  async listUnresolved(): Promise<Incident[]> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(incidents)
+        .where(notInArray(incidents.status, ['RESOLVED', 'VERIFIED', 'CLOSED']));
+      return await Promise.all(rows.map((r) => this.map(r)));
+    } catch (error) {
+      throw new DatabaseFailureException(error);
+    }
+  }
+  async listResolved(limit: number): Promise<Incident[]> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(incidents)
+        .where(
+          and(
+            inArray(incidents.status, ['RESOLVED', 'VERIFIED', 'CLOSED']),
+            isNotNull(incidents.resolutionSummary),
+            sql`${incidents.closureReason} is distinct from 'DUPLICATE'`,
+          ),
+        )
+        .orderBy(desc(incidents.resolutionResolvedAt), desc(incidents.id))
+        .limit(limit);
+      return await Promise.all(rows.map((r) => this.map(r)));
     } catch (error) {
       throw new DatabaseFailureException(error);
     }

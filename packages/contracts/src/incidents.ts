@@ -134,7 +134,43 @@ export const AuditEntrySchema = z.object({
   toStatus: IncidentStatusSchema.nullable(),
   description: z.string(),
 });
+// IF-A / IF-B / IF-G: advisory intelligence. `source` says whether the rule-based fallback or the ML model produced it.
+const insightSource = z.enum(['rules', 'model']);
+export const SimilarIncidentSchema = z.object({
+  incident: IncidentSummarySchema,
+  score: z.number().min(0).max(1),
+  reasons: z.array(z.string()),
+  source: insightSource,
+});
+export const SimilarityRequestSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  description: z.string().trim().max(5000).default(''),
+  serviceId: z.uuid().optional(),
+});
+export const SuggestedResolutionSchema = z.object({
+  incident: z.object({ id: z.uuid(), number: z.string(), title: z.string() }),
+  summary: z.string(),
+  rootCause: z.string().nullable(),
+  score: z.number().min(0).max(1),
+});
+export const CorrelationClusterSchema = z.object({
+  service: ServiceSummarySchema,
+  windowMinutes: z.number().int().positive(),
+  incidents: z.array(IncidentSummarySchema),
+  reason: z.string(),
+});
+export const IncidentInsightsSchema = z.object({
+  similar: z.array(SimilarIncidentSchema),
+  cluster: CorrelationClusterSchema.nullable(),
+  suggestedResolutions: z.array(SuggestedResolutionSchema),
+  source: insightSource,
+});
 export type CreateIncidentRequest = z.infer<typeof CreateIncidentRequestSchema>;
 export type IncidentSummary = z.infer<typeof IncidentSummarySchema>;
 export type IncidentDetail = z.infer<typeof IncidentDetailSchema>;
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
+export type SimilarIncident = z.infer<typeof SimilarIncidentSchema>;
+export type SimilarityRequest = z.infer<typeof SimilarityRequestSchema>;
+export type SuggestedResolution = z.infer<typeof SuggestedResolutionSchema>;
+export type CorrelationCluster = z.infer<typeof CorrelationClusterSchema>;
+export type IncidentInsights = z.infer<typeof IncidentInsightsSchema>;

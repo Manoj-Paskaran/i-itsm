@@ -7,6 +7,7 @@ import {
   CreateIncidentRequestSchema,
   FeedbackRequestSchema,
   IncidentDetailSchema,
+  IncidentInsightsSchema,
   IncidentListQuerySchema,
   IncidentSummarySchema,
   NoteRequestSchema,
@@ -15,8 +16,11 @@ import {
   RejectRequestSchema,
   RequestInfoSchema,
   ResolveRequestSchema,
+  SimilarIncidentSchema,
+  SimilarityRequestSchema,
   type IncidentDetail,
 } from '@itsm/contracts';
+import { IncidentInsightsService } from '../../application/incidents/incident-insights.service.js';
 import { IncidentService } from '../../application/incidents/incident.service.js';
 import { InvalidInputException } from '../../domain/exceptions/index.js';
 import { Permission as P, type User } from '../../domain/users/index.js';
@@ -65,9 +69,18 @@ function detail(value: IncidentDetail, user: User) {
 }
 @Controller('incidents')
 export class IncidentsController {
-  constructor(private readonly incidents: IncidentService) {}
+  constructor(
+    private readonly incidents: IncidentService,
+    private readonly insightsService: IncidentInsightsService,
+  ) {}
   @Post() async report(@CurrentUser() u: User, @Body() b: unknown) {
     return detail(await this.incidents.report(u, parse(CreateIncidentRequestSchema, b)), u);
+  }
+  /** Advisory "is this already reported?" check for the report form (IF-A). */
+  @Post('similar') @HttpCode(200) async similar(@CurrentUser() u: User, @Body() b: unknown) {
+    return z
+      .array(SimilarIncidentSchema)
+      .parse(await this.insightsService.similar(u, parse(SimilarityRequestSchema, b)));
   }
   @Get() async list(@CurrentUser() u: User, @Query() q: unknown) {
     return z
@@ -194,5 +207,11 @@ export class IncidentsController {
   }
   @Get(':id/audit') async audit(@CurrentUser() u: User, @Param('id') id: string) {
     return z.array(AuditEntrySchema).parse(await this.incidents.audit(u, parse(idSchema, id)));
+  }
+  /** Advisory similar incidents, correlation cluster and suggested resolutions (IF-A/B/G). */
+  @Get(':id/insights') async insights(@CurrentUser() u: User, @Param('id') id: string) {
+    return IncidentInsightsSchema.parse(
+      await this.insightsService.insights(u, parse(idSchema, id)),
+    );
   }
 }

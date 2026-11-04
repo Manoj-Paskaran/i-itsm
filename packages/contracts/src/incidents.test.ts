@@ -4,6 +4,7 @@ import {
   CloseAsDuplicateRequestSchema,
   CreateIncidentRequestSchema,
   IncidentActionSchema,
+  IncidentInsightsSchema,
   FeedbackRequestSchema,
   IncidentListQuerySchema,
   NoteRequestSchema,
@@ -11,6 +12,7 @@ import {
   RejectRequestSchema,
   RequestInfoSchema,
   ResolveRequestSchema,
+  SimilarityRequestSchema,
 } from './incidents.js';
 
 const id = '018f0662-2222-7222-8222-222222222222';
@@ -58,4 +60,38 @@ describe('incident requests', () => {
 
 it('acceptsGiveFeedbackAsAnAction', () => {
   expect(IncidentActionSchema.parse('giveFeedback')).toBe('giveFeedback');
+});
+
+describe('incident intelligence', () => {
+  it('defaultsSimilarityDescriptionToEmptyAndBoundsTitle', () => {
+    expect(SimilarityRequestSchema.parse({ title: '  Card payments failing ' })).toEqual({
+      title: 'Card payments failing',
+      description: '',
+    });
+    expect(SimilarityRequestSchema.safeParse({ title: 'no' }).success).toBe(false);
+    expect(
+      SimilarityRequestSchema.safeParse({ title: 'Checkout down', serviceId: 'bad' }).success,
+    ).toBe(false);
+  });
+  it('rejectsInsightScoresOutsideZeroToOne', () => {
+    const insights = {
+      similar: [],
+      cluster: null,
+      suggestedResolutions: [
+        {
+          incident: { id, number: 'INC-1', title: 'Fixed' },
+          summary: 'Restarted',
+          rootCause: null,
+          score: 0.5,
+        },
+      ],
+      source: 'rules',
+    };
+    expect(IncidentInsightsSchema.safeParse(insights).success).toBe(true);
+    const tooHigh = { ...insights.suggestedResolutions[0], score: 1.1 };
+    expect(
+      IncidentInsightsSchema.safeParse({ ...insights, suggestedResolutions: [tooHigh] }).success,
+    ).toBe(false);
+    expect(IncidentInsightsSchema.safeParse({ ...insights, source: 'gpt' }).success).toBe(false);
+  });
 });

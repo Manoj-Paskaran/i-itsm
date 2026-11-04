@@ -12,6 +12,7 @@ import {
   STATUS_LABEL,
   statusGroup,
   useIncidents,
+  useMyWorkload,
   useTechnicians,
 } from '@/lib/incidents';
 import {
@@ -32,6 +33,7 @@ const select =
 function Home() {
   const { user } = useAuth();
   const seesOthers = !!user?.permissions.includes('INCIDENT_ASSIGN');
+  const isTechnician = user?.role === 'TECHNICIAN';
   const [tab, setTab] = useState<QueueTab>('open');
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -50,7 +52,10 @@ function Home() {
   return (
     <AppShell>
       <header className="border-b border-border px-8 pt-5 pb-4 max-sm:px-4">
-        <h1 className="text-xl font-semibold">{homeLabel(user)}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold">{homeLabel(user)}</h1>
+          <Workload enabled={isTechnician} />
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="relative min-w-60 flex-1">
             <span className="sr-only">Search incidents</span>
@@ -246,5 +251,33 @@ function Row({ incident }: { incident: IncidentSummary }) {
         </div>
       </Link>
     </li>
+  );
+}
+
+function Workload({ enabled }: { enabled: boolean }) {
+  const me = useMyWorkload(enabled);
+  if (!enabled || !me.data) return null;
+  const { activeIncidents, capacity, availability } = me.data;
+  const ratio = capacity ? Math.min(1, activeIncidents / capacity) : 0;
+  return (
+    <div
+      className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
+      aria-label="Your workload"
+    >
+      <span className="text-xs text-muted-foreground">Your workload</span>
+      <span className="h-2 w-28 rounded-full bg-muted">
+        <span
+          className={`block h-2 rounded-full ${ratio >= 1 ? 'bg-fill-critical' : 'bg-primary'}`}
+          style={{ width: `${ratio * 100}%` }}
+        />
+      </span>
+      <span className="text-sm font-semibold tabular">
+        {activeIncidents} / {capacity} open
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {availability.replace('_', ' ').toLowerCase()}
+        {ratio >= 1 && ' · at capacity, no new auto-assignments'}
+      </span>
+    </div>
   );
 }

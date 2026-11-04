@@ -19,6 +19,11 @@ describe('loadEnv', () => {
       WEB_ORIGIN: 'http://localhost:5173',
     });
   });
+  it('treatsABlankMlServiceUrlAsUnsetAndRejectsANonUrl', () => {
+    expect(loadEnv({ ML_SERVICE_URL: '' }).ML_SERVICE_URL).toBeUndefined();
+    expect(loadEnv({ ML_SERVICE_URL: 'http://ml:8001' }).ML_SERVICE_URL).toBe('http://ml:8001');
+    expect(() => loadEnv({ ML_SERVICE_URL: 'not a url' })).toThrow(/ML_SERVICE_URL/);
+  });
   it('configuresMonitoringAndProductionPolicy', () => {
     expect(loadEnv({ NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(32) }).ESCALATION_POLICY).toBe(
       'standard',

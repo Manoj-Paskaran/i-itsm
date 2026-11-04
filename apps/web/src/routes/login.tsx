@@ -22,16 +22,33 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'register'>('signin');
+  const [name, setName] = useState('');
+  const [department, setDepartment] = useState('');
   if (auth.status === 'authenticated') return <Navigate to={redirect || '/'} />;
   async function submit(event: FormEvent) {
     event.preventDefault();
     setPending(true);
     setError('');
     try {
-      await auth.login(email, password);
+      if (mode === 'register') {
+        if (password.length < 8) throw new Error('The password needs at least 8 characters.');
+        await auth.register({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          department: department.trim(),
+        });
+      } else await auth.login(email, password);
       await navigate({ to: redirect || '/' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed');
+      setError(
+        err instanceof Error
+          ? err.message
+          : mode === 'register'
+            ? 'Sign up failed'
+            : 'Sign in failed',
+      );
     } finally {
       setPending(false);
     }
@@ -47,8 +64,32 @@ function Login() {
             <span className="grid size-7 place-items-center rounded-md bg-foreground text-background">
               <LifeBuoy size={16} aria-hidden />
             </span>
-            <h1 className="text-lg font-semibold">Sign in to I-ITSM</h1>
+            <h1 className="text-lg font-semibold">
+              {mode === 'register' ? 'Create your I-ITSM account' : 'Sign in to I-ITSM'}
+            </h1>
           </div>
+          {mode === 'register' && (
+            <>
+              <label className="block text-xs font-medium">
+                Full name
+                <input
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="mt-1 block h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                Department
+                <input
+                  required
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="mt-1 block h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </label>
+            </>
+          )}
           <label className="block text-xs font-medium">
             Email
             <input
@@ -75,8 +116,27 @@ function Login() {
             </p>
           )}
           <Button className="w-full" disabled={pending}>
-            {pending ? 'Signing in…' : 'Sign in'}
+            {pending
+              ? mode === 'register'
+                ? 'Creating account…'
+                : 'Signing in…'
+              : mode === 'register'
+                ? 'Create account'
+                : 'Sign in'}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            {mode === 'register' ? 'Already have an account?' : 'New employee?'}{' '}
+            <button
+              type="button"
+              className="font-medium text-primary"
+              onClick={() => {
+                setError('');
+                setMode(mode === 'register' ? 'signin' : 'register');
+              }}
+            >
+              {mode === 'register' ? 'Sign in' : 'Create an account'}
+            </button>
+          </p>
         </form>
         <div className="mt-5 text-xs text-muted-foreground">
           <p className="font-medium">Demo accounts</p>
@@ -98,6 +158,9 @@ function Login() {
                 key={name}
                 className="text-left hover:text-foreground"
                 onClick={() => {
+                  // A demo account always signs in, even from the register form.
+                  setMode('signin');
+                  setError('');
                   setEmail(`${name}@itsm.demo`);
                   setPassword('demo1234');
                 }}

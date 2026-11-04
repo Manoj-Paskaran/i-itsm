@@ -257,6 +257,16 @@ export function useRecommendations(id: string, enabled: boolean) {
     queryFn: () => apiFetch(`/api/incidents/${id}/recommendations`, RecommendationSchema.array()),
   });
 }
+/** The signed-in technician's own load (spec: technician "View current workload"). */
+export function useMyWorkload(enabled: boolean) {
+  return useQuery({
+    enabled,
+    retry: false,
+    queryKey: ['technicians', 'me'],
+    queryFn: () => apiFetch('/api/technicians/me', TechnicianSummarySchema),
+    refetchInterval: 15000,
+  });
+}
 export function useCategories() {
   return useQuery({
     queryKey: ['categories'],

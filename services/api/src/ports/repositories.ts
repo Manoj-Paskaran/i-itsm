@@ -40,6 +40,10 @@ export interface IncidentRepository extends Repository<Incident, IncidentId> {
   countOpenByAssignee(): Promise<Map<UserId, number>>;
   listAssignedUnacknowledged(): Promise<Incident[]>;
   listOpenClassified(): Promise<Incident[]>;
+  /** Incidents still being worked on: not RESOLVED, VERIFIED or CLOSED. */
+  listUnresolved(): Promise<Incident[]>;
+  /** Most recently resolved incidents that carry a resolution (duplicates excluded), newest first. */
+  listResolved(limit: number): Promise<Incident[]>;
 }
 export interface UserRepository extends Repository<User, UserId> {
   listAll(): Promise<User[]>;

@@ -1,4 +1,4 @@
-import type { IncidentDetail } from '@itsm/contracts';
+import type { IncidentDetail, IncidentSummary } from '@itsm/contracts';
 import { IncidentNotFoundException, InvalidInputException } from '../../domain/exceptions/index.js';
 import type { Incident } from '../../domain/incidents/index.js';
 import type { Clock, UserId } from '../../domain/shared/index.js';
@@ -112,6 +112,23 @@ export class IncidentViewMapper {
           ? (['giveFeedback'] as const)
           : []),
       ],
+    };
+  }
+  async summary(incident: Incident): Promise<IncidentSummary> {
+    const d = await this.detail(incident);
+    return {
+      id: d.id,
+      number: d.number,
+      title: d.title,
+      status: d.status,
+      priority: d.priority,
+      service: d.service,
+      category: d.category,
+      reporter: d.reporter,
+      assignee: d.assignee,
+      createdAt: d.createdAt,
+      slaStatus: d.slaStatus,
+      escalationLevel: d.escalationLevel,
     };
   }
 }

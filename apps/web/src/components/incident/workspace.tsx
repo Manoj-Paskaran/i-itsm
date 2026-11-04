@@ -394,6 +394,8 @@ function Activity({ detail }: { detail: IncidentDetail }) {
   const now = useNow(60000);
   const [note, setNote] = useState('');
   const [order, setOrder] = useState<'newest' | 'oldest'>('newest');
+  const { user } = useAuth();
+  const reporter = user?.id === detail.reporter.id;
   const events = activityEvents(audit.data ?? [], detail.notes, order);
   function addNote() {
     if (note.trim() && !mutation.isPending)
@@ -402,8 +404,10 @@ function Activity({ detail }: { detail: IncidentDetail }) {
   const composer = detail.allowedActions.includes('addNote') && (
     <div className="rounded-lg border border-border bg-card focus-within:border-border-strong">
       <textarea
-        aria-label="Investigation note"
-        placeholder="Add an investigation note…"
+        aria-label={reporter ? 'Additional information' : 'Investigation note'}
+        placeholder={
+          reporter ? 'Add more information for the technician…' : 'Add an investigation note…'
+        }
         value={note}
         onChange={(e) => setNote(e.target.value)}
         onKeyDown={(e) => {
@@ -421,7 +425,7 @@ function Activity({ detail }: { detail: IncidentDetail }) {
           onClick={addNote}
           className="h-7 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50"
         >
-          Add note
+          {reporter ? 'Add information' : 'Add note'}
         </button>
       </div>
       {mutation.isError && (

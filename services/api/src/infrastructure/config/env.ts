@@ -26,6 +26,8 @@ const EnvSchema = z.object({
   SMTP_URL: z.url().default('smtp://localhost:1025'),
   NOTIFICATIONS_EMAIL_ENABLED: z.stringbool().optional(),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
+  /** Python intelligence service; unset or unreachable means the rule-based fallback is used. */
+  ML_SERVICE_URL: z.preprocess((value) => (value === '' ? undefined : value), z.url().optional()),
 });
 
 export type Env = Omit<z.infer<typeof EnvSchema>, 'JWT_SECRET' | 'ESCALATION_POLICY'> & {

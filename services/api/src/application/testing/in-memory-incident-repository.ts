@@ -73,4 +73,17 @@ export class InMemoryIncidentRepository implements IncidentRepository {
       .filter((s) => s.status !== 'CLOSED' && s.priority !== null)
       .map((s) => Incident.rehydrate(structuredClone(s)));
   }
+  async listUnresolved() {
+    return [...this.data.values()]
+      .filter((s) => !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(s.status))
+      .map((s) => Incident.rehydrate(structuredClone(s)));
+  }
+  async listResolved(limit: number) {
+    return [...this.data.values()]
+      .filter((s) => s.resolution && s.closure?.reason !== 'DUPLICATE')
+      .filter((s) => ['RESOLVED', 'VERIFIED', 'CLOSED'].includes(s.status))
+      .sort((a, b) => b.resolution!.at.localeCompare(a.resolution!.at))
+      .slice(0, limit)
+      .map((s) => Incident.rehydrate(structuredClone(s)));
+  }
 }
