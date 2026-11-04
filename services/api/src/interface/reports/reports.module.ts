@@ -7,6 +7,7 @@ import { ReportsController } from './reports.controller.js';
 @Module({
   imports: [RepositoriesModule],
   controllers: [ReportsController],
+  exports: [ReportService],
   providers: [
     SystemClock,
     {

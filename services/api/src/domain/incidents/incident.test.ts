@@ -150,6 +150,12 @@ describe('Incident business rules', () => {
       UnauthorizedOperationException,
     );
   });
+  it('letsTheReporterAddInformationToTheirOwnIncident', () => {
+    const incident = inState('IN_PROGRESS');
+    incident.addNote('It also fails on the guest network', reporter, at);
+    expect(incident.notes().at(-1)?.authorId).toBe(reporterId);
+    expect(incident.status()).toBe('IN_PROGRESS');
+  });
   it('allowsTeamLeadToAddNote', () => {
     const incident = inState('IN_PROGRESS');
     incident.addNote('Helped investigate', Actor.of(asUserId('lead'), Role.TEAM_LEAD), at);

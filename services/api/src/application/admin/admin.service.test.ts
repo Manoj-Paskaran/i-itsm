@@ -290,6 +290,29 @@ describe('admin configuration', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.incident.number).toBe(incident.number);
   });
+  it('treatsADateOnlyAuditToAsTheEndOfThatDay', async () => {
+    const { adminService, incidentService } = await setup();
+    await adminService.createCategory(admin, {
+      code: 'PRINTING',
+      name: 'Printing',
+      requiredSkill: 'printing',
+    });
+    const incident = await incidentService.report(reporter, report);
+    const result = await adminService.searchAudit(admin, {
+      incidentId: incident.id,
+      action: 'IncidentCreated',
+      to: '2026-11-03', // same day as the fixed clock, 09:00Z
+      limit: 100,
+    });
+    expect(result).toHaveLength(1);
+  });
+  it('rejectsAnAdminDeactivatingTheirOwnAccount', async () => {
+    const { adminService, users } = await setup();
+    await expect(
+      adminService.updateUser(admin, admin.id(), { active: false }),
+    ).rejects.toBeInstanceOf(InvalidInputException);
+    expect((await users.findById(admin.id()))?.isActive()).toBe(true);
+  });
   it('auditSearchRequiresAuditView', async () => {
     const { adminService } = await setup();
     await expect(adminService.searchAudit(employee, { limit: 100 })).rejects.toBeInstanceOf(

@@ -1,4 +1,5 @@
 import { AdminModule } from './interface/admin/admin.module.js';
+import { McpModule } from './interface/mcp/mcp.module.js';
 import { ReportsModule } from './interface/reports/reports.module.js';
 import { NotificationsModule } from './interface/notifications/notifications.module.js';
 import { MonitoringModule } from './interface/monitoring/monitoring.module.js';
@@ -20,6 +21,7 @@ import { HealthModule } from './interface/health/health.module.js';
     NotificationsModule,
     ReportsModule,
     AdminModule,
+    McpModule,
   ],
 })
 export class AppModule {}

@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         name: 'I-ITSM',
         short_name: 'I-ITSM',
-        theme_color: '#171717',
+        theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
         icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],

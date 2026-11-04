@@ -5,7 +5,8 @@ import {
   TechnicianSummarySchema,
 } from '@itsm/contracts';
 import { z } from 'zod';
-import { Permission } from '../../domain/users/index.js';
+import { ConfigItemNotFoundException } from '../../domain/exceptions/index.js';
+import { Permission, Technician, type User } from '../../domain/users/index.js';
 import {
   CATEGORY_REPOSITORY,
   INCIDENT_REPOSITORY,
@@ -16,7 +17,7 @@ import {
   type ItServiceRepository,
   type UserRepository,
 } from '../../ports/index.js';
-import { RequirePermissions } from '../auth/decorators.js';
+import { CurrentUser, RequirePermissions } from '../auth/decorators.js';
 @Controller()
 export class CatalogController {
   constructor(
@@ -48,18 +49,28 @@ export class CatalogController {
       this.users.listTechnicians(),
       this.incidents.countOpenByAssignee(),
     ]);
-    return z.array(TechnicianSummarySchema).parse(
-      technicians
-        .filter((t) => t.isActive())
-        .map((t) => ({
-          id: t.id(),
-          name: t.name(),
-          role: t.role(),
-          skills: [...t.skills()].map((s) => s.value),
-          availability: t.availabilityStatus(),
-          activeIncidents: counts.get(t.id()) ?? 0,
-          capacity: t.capacity(),
-        })),
-    );
+    return z
+      .array(TechnicianSummarySchema)
+      .parse(technicians.filter((t) => t.isActive()).map((t) => technicianSummary(t, counts)));
   }
+  /** The caller's own workload: open incidents against their capacity. */
+  @Get('technicians/me')
+  @RequirePermissions(Permission.INCIDENT_WORK)
+  async myWorkload(@CurrentUser() user: User) {
+    if (!(user instanceof Technician))
+      throw new ConfigItemNotFoundException('Technician', user.id());
+    const counts = await this.incidents.countOpenByAssignee();
+    return TechnicianSummarySchema.parse(technicianSummary(user, counts));
+  }
+}
+function technicianSummary(t: Technician, counts: ReadonlyMap<string, number>) {
+  return {
+    id: t.id(),
+    name: t.name(),
+    role: t.role(),
+    skills: [...t.skills()].map((s) => s.value),
+    availability: t.availabilityStatus(),
+    activeIncidents: counts.get(t.id()) ?? 0,
+    capacity: t.capacity(),
+  };
 }

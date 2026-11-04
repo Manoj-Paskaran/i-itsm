@@ -27,7 +27,14 @@ import {
   Duration,
 } from '../../domain/shared/index.js';
 import { SlaPolicy } from '../../domain/sla/index.js';
-import { Admin, Availability, Employee, Technician } from '../../domain/users/index.js';
+import {
+  Admin,
+  Availability,
+  Employee,
+  Role,
+  TeamLead,
+  Technician,
+} from '../../domain/users/index.js';
 import { AuditRecorder } from '../audit/audit-recorder.js';
 import { InProcessEventPublisher } from '../events/in-process-event-publisher.js';
 import { InMemoryAuditRepository } from '../testing/in-memory-audit-repository.js';
@@ -215,6 +222,28 @@ describe('IncidentService rules', () => {
     const actions = records.map((r) => r.toSnapshot().action);
     expect(actions).toContain('SlaBreached');
     expect(actions.indexOf('SlaBreached')).toBeLessThan(actions.indexOf('IncidentAcknowledged'));
+  });
+  it('letsATeamLeadReadTheAuditOfAnIncidentTheyCanSee', async () => {
+    const { svc, users } = await setup();
+    // Audit entries expose actor ids as UUIDs, so this reporter needs a real one.
+    const reporter = Employee.rehydrate({
+      ...employee.toSnapshot(),
+      id: asUserId('11111111-1111-4111-8111-111111111111'),
+    });
+    await users.save(reporter);
+    const lead = TeamLead.rehydrate({
+      ...(technician.toSnapshot() as Extract<
+        ReturnType<typeof technician.toSnapshot>,
+        { role: typeof Role.TECHNICIAN }
+      >),
+      id: asUserId('lead'),
+      email: 'lead@example.com',
+      role: Role.TEAM_LEAD,
+      team: [],
+    });
+    const d = await svc.report(reporter, cmd);
+    const entries = await svc.audit(lead, d.id);
+    expect(entries.map((e) => e.action)).toContain('IncidentCreated');
   });
   it('rejectReopensIncident', async () => {
     const { svc } = await setup();

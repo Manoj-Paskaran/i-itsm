@@ -55,6 +55,7 @@ function nextAuditId() {
   imports: [RepositoriesModule],
   controllers: [IncidentsController, CatalogController],
   exports: [
+    IncidentService,
     SystemClock,
     InProcessEventPublisher,
     PriorityStrategyRegistry,

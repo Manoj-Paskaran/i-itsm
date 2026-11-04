@@ -260,7 +260,11 @@ export class IncidentService {
     return this.command(
       u,
       id,
-      u.can(P.INCIDENT_VIEW_ALL) ? P.INCIDENT_VIEW_ALL : P.INCIDENT_WORK,
+      u.can(P.INCIDENT_VIEW_ALL)
+        ? P.INCIDENT_VIEW_ALL
+        : u.can(P.INCIDENT_WORK)
+          ? P.INCIDENT_WORK
+          : P.INCIDENT_VERIFY_OWN,
       (i, a) => i.addNote(text, a, this.clock.now()),
     );
   }
@@ -330,9 +334,8 @@ export class IncidentService {
     });
   }
   async audit(u: User, id: string) {
+    // Anyone who may see the incident may read its history; the global audit search stays on AUDIT_VIEW.
     const i = await this.visible(u, id);
-    if (!u.can(P.AUDIT_VIEW) && i.reporterId() !== u.id() && i.assigneeId() !== u.id())
-      u.require(P.AUDIT_VIEW);
     const records = await this.audits.listByIncident(i.id);
     const label = await this.auditLabels(i);
     return Promise.all(

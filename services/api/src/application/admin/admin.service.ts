@@ -123,6 +123,10 @@ export class AdminService {
     actor.require(Permission.CONFIG_MANAGE);
     const user = (await this.users.findById(asUserId(id))) ?? missing('User', id);
     if (input.name !== undefined) user.rename(input.name);
+    if (input.active === false && user.id() === actor.id())
+      throw new InvalidInputException('You cannot deactivate your own account.', {
+        field: 'active',
+      });
     if (input.active === true) user.activate();
     else if (input.active === false) user.deactivate();
     if (input.department !== undefined) {
@@ -296,7 +300,10 @@ export class AdminService {
       ...(input.actorId ? { actorId: asUserId(input.actorId) } : {}),
       ...(input.action ? { action: input.action } : {}),
       ...(input.from ? { from: new Date(input.from) } : {}),
-      ...(input.to ? { to: new Date(input.to) } : {}),
+      // A date-only `to` means the whole of that day, as in the incident list filter.
+      ...(input.to
+        ? { to: new Date(input.to.length === 10 ? `${input.to}T23:59:59.999Z` : input.to) }
+        : {}),
       limit: input.limit,
     });
     return Promise.all(

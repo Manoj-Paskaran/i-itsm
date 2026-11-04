@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        if (localStorage.getItem('itsm-theme') === 'dark')
+          document.documentElement.classList.add('dark');
+      } catch {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#171717" />
+    <meta name="theme-color" content="#ffffff" />
     <title>I-ITSM</title>
   </head>
   <body>

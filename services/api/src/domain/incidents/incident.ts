@@ -225,7 +225,13 @@ export class Incident {
 
   addNote(text: string, by: Actor, at: Instant): void {
     const next = this.state.addNote(this);
-    if (by.role !== Role.TEAM_LEAD && by.role !== Role.ADMIN && by.role !== Role.IT_MANAGER)
+    // The reporter may add information to their own incident; staff may annotate any incident.
+    if (
+      !by.is(this.reporter) &&
+      by.role !== Role.TEAM_LEAD &&
+      by.role !== Role.ADMIN &&
+      by.role !== Role.IT_MANAGER
+    )
       this.requireAssignee(by);
     const note = new InvestigationNote(by.id, text, at);
     const event = this.commit(next, by, at);

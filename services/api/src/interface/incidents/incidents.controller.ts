@@ -45,7 +45,12 @@ function detail(value: IncidentDetail, user: User) {
       case 'resolve':
         return assigned && user.can(P.INCIDENT_WORK);
       case 'addNote':
-        return (assigned && user.can(P.INCIDENT_WORK)) || user.can(P.INCIDENT_VIEW_ALL);
+        return (
+          (assigned && user.can(P.INCIDENT_WORK)) ||
+          user.can(P.INCIDENT_VIEW_ALL) ||
+          // While a question is pending the reporter answers it via provideInfo, not a note.
+          (own && value.status !== 'PENDING_INFO')
+        );
       case 'provideInfo':
       case 'verify':
       case 'reject':

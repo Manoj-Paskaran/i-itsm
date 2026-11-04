@@ -295,6 +295,60 @@ describe('incident HTTP', () => {
       .expect(200);
     expect(IncidentDetailSchema.parse(asTech.body).allowedActions).not.toContain('giveFeedback');
   });
+  it('letsTheReporterAddInformationToTheirOwnIncident', async () => {
+    const d = await report();
+    expect(d.allowedActions).toContain('addNote');
+    const r = await request(server())
+      .post(`/api/incidents/${d.id}/notes`)
+      .set('Authorization', auth(employeeToken))
+      .send({ text: 'It also fails on the guest network' })
+      .expect(200);
+    expect(IncidentDetailSchema.parse(r.body).notes.at(-1)?.text).toBe(
+      'It also fails on the guest network',
+    );
+  });
+  it('offersTheReporterProvideInfoNotAddNoteWhileInfoIsPending', async () => {
+    const d = await report();
+    for (const [path, body] of [
+      ['acknowledge', {}],
+      ['start', {}],
+      ['request-info', { question: 'Which office?' }],
+    ] as const)
+      await request(server())
+        .post(`/api/incidents/${d.id}/${path}`)
+        .set('Authorization', auth(techToken))
+        .send(body)
+        .expect(200);
+    const r = await request(server())
+      .get(`/api/incidents/${d.id}`)
+      .set('Authorization', auth(employeeToken))
+      .expect(200);
+    const actions = IncidentDetailSchema.parse(r.body).allowedActions;
+    expect(actions).toContain('provideInfo');
+    expect(actions).not.toContain('addNote');
+  });
+  it('hidesAnotherEmployeesIncidentFromTheirNotes404', async () => {
+    const d = await report();
+    await request(server())
+      .post(`/api/incidents/${d.id}/notes`)
+      .set('Authorization', auth(otherToken))
+      .send({ text: 'Not my incident' })
+      .expect(404);
+  });
+  it('showsATechnicianTheirOwnWorkload', async () => {
+    await report();
+    const r = await request(server())
+      .get('/api/technicians/me')
+      .set('Authorization', auth(techToken))
+      .expect(200);
+    expect(r.body).toMatchObject({ id: ids.tech, activeIncidents: 1, capacity: 5 });
+  });
+  it('refusesWorkloadToAnEmployee403', async () => {
+    await request(server())
+      .get('/api/technicians/me')
+      .set('Authorization', auth(employeeToken))
+      .expect(403);
+  });
   it('illegalTransitionReturns409', async () => {
     const d = await report();
     const r = await request(server())
