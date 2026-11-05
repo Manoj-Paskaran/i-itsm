@@ -26,7 +26,7 @@ export function ReportChat({
   onSubmit: () => void;
   onEditInForm: () => void;
   pending: boolean;
-  error: string | null;
+  error: React.ReactNode;
 }) {
   const [text, setText] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -81,11 +81,7 @@ export function ReportChat({
           <p className="rounded-md bg-panel p-3 text-sm text-muted-foreground">
             {priorityPreview(form, service)}
           </p>
-          {error && (
-            <p role="alert" className="text-sm text-critical-foreground">
-              {error}
-            </p>
-          )}
+          {error}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={onSubmit}

@@ -36,7 +36,7 @@ export interface IncidentRepository extends Repository<Incident, IncidentId> {
   nextIdentity(): Promise<{ id: IncidentId; number: IncidentNumber }>;
   findOpenByReporter(
     reporterId: UserId,
-  ): Promise<Array<{ id: IncidentId; serviceId: ItServiceId; title: string }>>;
+  ): Promise<Array<{ id: IncidentId; number: string; serviceId: ItServiceId; title: string }>>;
   countOpenByAssignee(): Promise<Map<UserId, number>>;
   listAssignedUnacknowledged(): Promise<Incident[]>;
   listOpenClassified(): Promise<Incident[]>;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { homeLabel, reportErrors } from './report';
+import { ApiError } from './api';
+import { duplicateOf, homeLabel, reportErrors } from './report';
 
 const valid = {
   title: 'Checkout fails',
@@ -29,4 +30,24 @@ describe('report form', () => {
       homeLabel({ role: 'TECHNICIAN', permissions: [] }),
       homeLabel({ role: 'TEAM_LEAD', permissions: ['INCIDENT_VIEW_ALL'] }),
     ]).toEqual(['My incidents', 'My work', 'All incidents']));
+});
+
+describe('duplicate report', () => {
+  const error = (code: string, details: Record<string, unknown>) =>
+    new ApiError(409, code, 'You already reported this problem', details);
+  it('linksADuplicateRejectionToTheEarlierIncident', () =>
+    expect(
+      duplicateOf(
+        error('DUPLICATE_INCIDENT', { existingIncidentId: 'id-1', existingNumber: 'INC0217' }),
+      ),
+    ).toEqual({ id: 'id-1', number: 'INC0217' }));
+  it('stillLinksWhenTheNumberIsMissing', () =>
+    expect(duplicateOf(error('DUPLICATE_INCIDENT', { existingIncidentId: 'id-1' }))).toEqual({
+      id: 'id-1',
+      number: null,
+    }));
+  it('ignoresOtherErrors', () => {
+    expect(duplicateOf(error('SERVICE_NOT_FOUND', { existingIncidentId: 'id-1' }))).toBeNull();
+    expect(duplicateOf(new Error('offline'))).toBeNull();
+  });
 });

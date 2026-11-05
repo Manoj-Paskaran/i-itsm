@@ -8,7 +8,13 @@ import { startIntake } from '@/lib/chat-intake';
 import { PriorityChip, SlaPill } from '@/components/incident/chips';
 import { STATUS_LABEL, useReportIncident, useServices } from '@/lib/incidents';
 import { similarityQuery, useDebounced, useSimilarCheck } from '@/lib/insights';
-import { IMPACT_OPTIONS, reportErrors, URGENCY_OPTIONS, type ReportForm } from '@/lib/report';
+import {
+  duplicateOf,
+  IMPACT_OPTIONS,
+  reportErrors,
+  URGENCY_OPTIONS,
+  type ReportForm,
+} from '@/lib/report';
 import { formatClock } from '@/lib/roadmap';
 import { formatScore } from '@/lib/staff';
 
@@ -111,11 +117,13 @@ function ReportPage() {
                   }}
                   pending={report.isPending}
                   error={
-                    report.isError
-                      ? report.error.message
-                      : touched && Object.keys(errors).length
-                        ? 'Some answers are missing. Edit them in the form.'
-                        : null
+                    report.isError ? (
+                      <ReportFailure error={report.error} />
+                    ) : touched && Object.keys(errors).length ? (
+                      <p role="alert" className="text-sm text-critical-foreground">
+                        Some answers are missing. Edit them in the form.
+                      </p>
+                    ) : null
                   }
                 />
                 <AlreadyReported form={form} />
@@ -190,11 +198,7 @@ function ReportPage() {
                   />
                   {error('affectedUsers')}
                 </label>
-                {report.isError && (
-                  <p role="alert" className="text-sm text-critical-foreground">
-                    {report.error.message}
-                  </p>
-                )}
+                {report.isError && <ReportFailure error={report.error} />}
                 <button
                   disabled={report.isPending}
                   className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-base font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50 sm:w-auto"
@@ -207,6 +211,28 @@ function ReportPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+/** A rejected report; a duplicate links to the incident the reporter already has open. */
+function ReportFailure({ error }: { error: Error }) {
+  const existing = duplicateOf(error);
+  return (
+    <p role="alert" className="text-sm text-critical-foreground">
+      {error.message}
+      {existing && (
+        <>
+          {' '}
+          <Link
+            to="/incidents/$incidentId"
+            params={{ incidentId: existing.id }}
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Follow {existing.number ?? 'your earlier report'}
+          </Link>
+        </>
+      )}
+    </p>
   );
 }
 

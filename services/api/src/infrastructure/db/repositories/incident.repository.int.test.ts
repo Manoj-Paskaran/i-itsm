@@ -106,7 +106,12 @@ it('findsOpenIncidentsByReporter', async () => {
   const { Incident } = await import('../../../domain/incidents/index.js');
   await f.incidents.save(Incident.rehydrate(otherSnapshot));
   expect(await f.incidents.findOpenByReporter(f.reporter.id())).toEqual([
-    { id: open.id, serviceId: f.service.id(), title: open.toSnapshot().title },
+    {
+      id: open.id,
+      number: open.toSnapshot().number,
+      serviceId: f.service.id(),
+      title: open.toSnapshot().title,
+    },
   ]);
 });
 it('countsOpenIncidentsPerAssignee', async () => {

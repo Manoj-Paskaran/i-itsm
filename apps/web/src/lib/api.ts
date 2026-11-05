@@ -12,6 +12,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -35,6 +36,7 @@ export async function apiFetch<T>(
       response.status,
       error.success ? error.data.error.code : 'UNKNOWN',
       error.success ? error.data.error.message : `Request failed (${response.status})`,
+      error.success ? (error.data.error.details ?? {}) : {},
     );
   }
   if (response.status === 204) return undefined as T;

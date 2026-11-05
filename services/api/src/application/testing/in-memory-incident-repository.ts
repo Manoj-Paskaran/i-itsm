@@ -54,7 +54,7 @@ export class InMemoryIncidentRepository implements IncidentRepository {
   async findOpenByReporter(id: UserId) {
     return [...this.data.values()]
       .filter((s) => s.reporterId === id && s.status !== 'CLOSED')
-      .map((s) => ({ id: s.id, serviceId: s.serviceId, title: s.title }));
+      .map((s) => ({ id: s.id, number: s.number, serviceId: s.serviceId, title: s.title }));
   }
   async countOpenByAssignee() {
     const counts = new Map<UserId, number>();

@@ -120,6 +120,10 @@ describe('exception hierarchy', () => {
     expect(error.name).toBe(error.constructor.name);
     expect(error.message).toBeTruthy();
   });
+  it('describesADuplicateWithoutLeakingTheInternalId', () =>
+    expect(new E.DuplicateIncidentException('018f-uuid').message).toBe(
+      'You already reported this problem, and it is still open.',
+    ));
   it('preserves infrastructure causes', () => {
     expect(new E.DatabaseFailureException(cause).cause).toBe(cause);
     expect(new E.NetworkFailureException('ml', cause).cause).toBe(cause);

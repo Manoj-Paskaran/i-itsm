@@ -49,6 +49,21 @@ describe('IncidentFactory', () => {
       }),
     );
   });
+  it('factoryNamesTheOpenIncidentTheReporterAlreadyFiled', () => {
+    expect(() =>
+      IncidentFactory.report(draft, {
+        ...context,
+        openIncidentsOfReporter: [
+          { id: duplicateId, number: 'INC0217', serviceId: service.id(), title: draft.title },
+        ],
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        message: 'You already reported this problem as INC0217, and it is still open.',
+        details: { existingIncidentId: duplicateId, existingNumber: 'INC0217' },
+      }),
+    );
+  });
   it.each(['  WIFI IS UNAVAILABLE  ', 'WiFi\t IS   unavailable', 'wifi\nis unavailable'])(
     'factoryRejectsCaseAndWhitespaceEquivalentTitle %j',
     (title) => {

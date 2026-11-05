@@ -12,6 +12,8 @@ export interface ReportContext {
   /** Already scoped to the reporter and to open incidents by the application layer. */
   readonly openIncidentsOfReporter: ReadonlyArray<{
     id: IncidentId;
+    /** Human-readable number, so the reporter is told which incident they already opened. */
+    number?: string;
     serviceId: ItServiceId;
     title: string;
   }>;
@@ -27,7 +29,7 @@ export class IncidentFactory {
         existing.serviceId === draft.serviceId &&
         normaliseTitle(existing.title) === normaliseTitle(draft.title),
     );
-    if (duplicate) throw new DuplicateIncidentException(duplicate.id);
+    if (duplicate) throw new DuplicateIncidentException(duplicate.id, duplicate.number);
     return Incident.report({ ...draft, id: ctx.id, number: ctx.number, at: ctx.at });
   }
 }

@@ -105,14 +105,22 @@ export class DrizzleIncidentRepository implements IncidentRepository {
       throw new DatabaseFailureException(error);
     }
   }
-  async findOpenByReporter(
-    reporterId: UserId,
-  ): Promise<
-    Array<{ id: IncidentId; serviceId: ReturnType<typeof asItServiceId>; title: string }>
+  async findOpenByReporter(reporterId: UserId): Promise<
+    Array<{
+      id: IncidentId;
+      number: string;
+      serviceId: ReturnType<typeof asItServiceId>;
+      title: string;
+    }>
   > {
     try {
       const rows = await this.db
-        .select({ id: incidents.id, serviceId: incidents.serviceId, title: incidents.title })
+        .select({
+          id: incidents.id,
+          number: incidents.number,
+          serviceId: incidents.serviceId,
+          title: incidents.title,
+        })
         .from(incidents)
         .where(and(eq(incidents.reporterId, reporterId), ne(incidents.status, 'CLOSED')));
       return rows.map((r) => ({

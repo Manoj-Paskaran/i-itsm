@@ -1,4 +1,5 @@
 import type { AuthUser } from '@itsm/contracts';
+import { ApiError } from './api';
 
 /** Impact and urgency asked as plain questions; values are the API's 1–4 levels. */
 export const IMPACT_OPTIONS = [
@@ -43,4 +44,12 @@ export function homeLabel(user: Pick<AuthUser, 'role' | 'permissions'> | null) {
   if (user?.role === 'EMPLOYEE') return 'My incidents';
   if (user?.permissions.includes('INCIDENT_VIEW_ALL')) return 'All incidents';
   return 'My work';
+}
+
+/** The reporter's own open incident behind a DUPLICATE_INCIDENT rejection, to link to it. */
+export function duplicateOf(error: unknown): { id: string; number: string | null } | null {
+  if (!(error instanceof ApiError) || error.code !== 'DUPLICATE_INCIDENT') return null;
+  const { existingIncidentId: id, existingNumber: number } = error.details;
+  if (typeof id !== 'string') return null;
+  return { id, number: typeof number === 'string' ? number : null };
 }
