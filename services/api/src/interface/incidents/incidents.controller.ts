@@ -18,6 +18,7 @@ import {
   ResolveRequestSchema,
   SimilarIncidentSchema,
   SimilarityRequestSchema,
+  SlaRiskEntrySchema,
   type IncidentDetail,
 } from '@itsm/contracts';
 import { IncidentInsightsService } from '../../application/incidents/incident-insights.service.js';
@@ -81,6 +82,10 @@ export class IncidentsController {
     return z
       .array(SimilarIncidentSchema)
       .parse(await this.insightsService.similar(u, parse(SimilarityRequestSchema, b)));
+  }
+  /** Advisory SLA breach risk for every visible open incident (IF-E, SLA monitor). */
+  @Get('sla-risk') async slaRisk(@CurrentUser() u: User) {
+    return z.array(SlaRiskEntrySchema).parse(await this.insightsService.slaRisks(u));
   }
   @Get() async list(@CurrentUser() u: User, @Query() q: unknown) {
     return z

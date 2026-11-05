@@ -1,6 +1,7 @@
 import type { Incident } from '../../domain/incidents/index.js';
 import {
   CorrelationPolicy,
+  SlaRiskPolicy,
   TextSimilarity,
   type CorrelationSubject,
 } from '../../domain/intelligence/index.js';
@@ -9,6 +10,7 @@ import type {
   IncidentRepository,
   IncidentText,
   IntelligencePort,
+  SlaRiskContext,
 } from '../../ports/index.js';
 
 /** How many recent resolutions are searched for a suggestion. */
@@ -40,6 +42,7 @@ export class RuleBasedIntelligenceAdapter implements IntelligencePort {
       CorrelationPolicy.DEFAULT.minOthers,
       similarity,
     ),
+    private readonly risk = new SlaRiskPolicy(),
   ) {}
   async similar(text: IncidentText, visible: CandidateFilter, limit: number) {
     const open = (await this.incidents.listUnresolved()).filter(
@@ -64,6 +67,13 @@ export class RuleBasedIntelligenceAdapter implements IntelligencePort {
       (i) => i.id !== text.excludeId && visible(i),
     );
     return { result: this.rank(text, resolved, limit), source: 'rules' as const };
+  }
+  slaRisk(incident: Incident, context: SlaRiskContext) {
+    const factors = SlaRiskPolicy.factors(incident.toSnapshot(), context.now);
+    return Promise.resolve({
+      result: factors && this.risk.estimate(factors),
+      source: 'rules' as const,
+    });
   }
   private rank(text: IncidentText, candidates: readonly Incident[], limit: number) {
     return this.similarity

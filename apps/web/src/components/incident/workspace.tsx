@@ -43,8 +43,10 @@ import { useAuth } from '@/lib/auth';
 import { homeLabel } from '@/lib/report';
 import { formatClock } from '@/lib/roadmap';
 import { useNow } from '@/lib/use-now';
-import { chip, PriorityChip, SlaPill, StatusPill } from './chips';
+import { chip, PriorityChip, RiskBadge, SlaPill, StatusPill } from './chips';
 import { ContextPanel, formatDate } from './context-panel';
+import { ClusterBanner } from './insights-panel';
+import { useWorkspaceInsights } from '@/lib/insights';
 import { LifecycleRail } from './lifecycle-rail';
 
 type FormAction = 'requestInfo' | 'resolve' | 'reject' | 'provideInfo';
@@ -124,6 +126,7 @@ export function IncidentWorkspace({ incidentId }: { incidentId: string }) {
 function Workspace({ detail }: { detail: IncidentDetail }) {
   const mutation = useIncidentAction(detail.id);
   const audit = useIncidentAudit(detail.id);
+  const insights = useWorkspaceInsights(detail);
   const { user } = useAuth();
   const [form, setForm] = useState<FormAction | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -214,6 +217,7 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
           <StatusPill status={detail.status} duplicate={detail.closure?.reason === 'DUPLICATE'} />
           <PriorityChip priority={detail.priority} />
           {detail.slaStatus && <SlaPill status={detail.slaStatus} />}
+          {insights?.slaRisk && <RiskBadge risk={insights.slaRisk} />}
           {detail.escalationLevel !== 'TECHNICIAN' && (
             <span className={`${chip} border-transparent bg-high-subtle text-high-foreground`}>
               <ArrowUpRight size={14} strokeWidth={2} aria-hidden />
@@ -305,6 +309,7 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_320px] max-lg:grid-cols-1">
         <div className="space-y-8 px-8 py-6">
+          {insights && <ClusterBanner insights={insights} currentId={detail.id} />}
           <section aria-labelledby="summary">
             <h2 id="summary" className="mb-2 text-sm font-semibold">
               Summary

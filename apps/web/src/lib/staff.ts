@@ -23,11 +23,14 @@ export function navItems(user: Pick<AuthUser, 'role' | 'permissions'> | null): N
 const LEVEL_RANK = { TECHNICIAN: 0, TEAM_LEAD: 1, SYS_ADMIN: 2, IT_MANAGER: 3 };
 /** SLA monitor rows: not-closed incidents (the set the SLA report counts) that are breached or at risk, breached first, then most escalated. */
 export function slaWatchlist<
-  T extends Pick<IncidentSummary, 'slaStatus' | 'escalationLevel' | 'createdAt' | 'status'>,
->(incidents: T[]) {
+  T extends Pick<IncidentSummary, 'id' | 'slaStatus' | 'escalationLevel' | 'createdAt' | 'status'>,
+>(incidents: T[], predictedHigh: ReadonlySet<string> = new Set()) {
+  // IF-E early warning: an on-track incident the risk estimate calls HIGH is watched too.
   return incidents
     .filter(
-      (i) => (i.slaStatus === 'BREACHED' || i.slaStatus === 'AT_RISK') && i.status !== 'CLOSED',
+      (i) =>
+        (i.slaStatus === 'BREACHED' || i.slaStatus === 'AT_RISK' || predictedHigh.has(i.id)) &&
+        i.status !== 'CLOSED',
     )
     .sort(
       (a, b) =>

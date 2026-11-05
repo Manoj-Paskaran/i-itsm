@@ -1,10 +1,12 @@
 import type { Incident } from '../../domain/incidents/index.js';
+import { SlaRiskPolicy, type SlaRiskEstimate } from '../../domain/intelligence/index.js';
 import type {
   CandidateFilter,
   IncidentMatch,
   IncidentRepository,
   IncidentText,
   IntelligencePort,
+  SlaRiskContext,
   Sourced,
 } from '../../ports/index.js';
 
@@ -71,6 +73,53 @@ export class HttpIntelligenceAdapter implements IntelligencePort {
   }
   suggestResolutions(text: IncidentText, visible: CandidateFilter, limit: number) {
     return this.fallback.suggestResolutions(text, visible, limit);
+  }
+  /**
+   * IF-E: the ML service's breach-risk model (`POST /v1/sla-risk`). The rule-based reasons are
+   * kept so the badge stays explainable; any failure falls back to the rule-based estimate.
+   */
+  async slaRisk(
+    incident: Incident,
+    context: SlaRiskContext,
+  ): Promise<Sourced<SlaRiskEstimate | null>> {
+    const s = incident.toSnapshot();
+    const factors = SlaRiskPolicy.factors(s, context.now);
+    // Past the deadline the answer is certain; only ask the model while there is time left.
+    if (!factors || !s.priority || factors.elapsedFraction >= 1)
+      return this.fallback.slaRisk(incident, context);
+    try {
+      const response = await this.fetchFn(new URL('/v1/sla-risk', this.baseUrl), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          priority: s.priority,
+          impact: s.impact,
+          urgency: s.urgency,
+          category: context.categoryName ?? 'Uncategorised',
+          service: context.serviceName,
+          // Reassignments are not tracked separately; reopenings are the closest signal.
+          reassignmentCount: s.reopenCount,
+          minutesOpen: Math.round(factors.minutesOpen),
+          minutesToDeadline: Math.round(factors.minutesToDeadline),
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`ML sla-risk failed with ${response.status}`);
+      const { probability } = (await response.json()) as { probability?: unknown };
+      if (typeof probability !== 'number' || !(probability >= 0 && probability <= 1))
+        throw new Error('ML sla-risk returned no probability');
+      const p = Math.round(probability * 100) / 100;
+      return {
+        result: {
+          probability: p,
+          level: SlaRiskPolicy.levelOf(p),
+          reasons: SlaRiskPolicy.reasons(factors),
+        },
+        source: 'model',
+      };
+    } catch {
+      return this.fallback.slaRisk(incident, context);
+    }
   }
   private async embed(texts: readonly IncidentText[]): Promise<number[][]> {
     const response = await this.fetchFn(new URL('/v1/embed', this.baseUrl), {

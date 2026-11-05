@@ -7,6 +7,7 @@ import { Incident, type IncidentStatus } from '../../domain/incidents/index.js';
 import {
   at,
   category,
+  later,
   employee,
   service,
   snapshot,
@@ -84,6 +85,7 @@ describe('IncidentInsightsService', () => {
       incidents,
       new RuleBasedIntelligenceAdapter(incidents),
       mapper,
+      new FixedClock(later),
     );
   });
   it('listsSimilarOpenIncidentsExcludingItselfWithReasons', async () => {
@@ -124,6 +126,32 @@ describe('IncidentInsightsService', () => {
       },
     ]);
     expect(similar.map((s) => s.incident.id)).not.toContain(fixed.id);
+  });
+  it('estimatesSlaRiskOfAnOpenIncidentWithReasons', async () => {
+    const { slaRisk } = await svc.insights(admin, checkout.id);
+    expect(slaRisk).toEqual({
+      probability: 0.6,
+      level: 'MEDIUM',
+      reasons: ['50% of the resolution window used', 'P2 has a tight window'],
+      source: 'rules',
+    });
+  });
+  it('hasNoSlaRiskOnceResolved', async () => {
+    const fixed = incident('Card payments failing at checkout', 'CLOSED');
+    await incidents.save(fixed);
+    expect((await svc.insights(admin, fixed.id)).slaRisk).toBeNull();
+  });
+  it('listsSlaRiskOfVisibleOpenIncidentsForTheMonitor', async () => {
+    // An incident not yet triaged has no SLA; a resolved one is not open, so neither is listed.
+    const untriaged = incident('Badge reader beeps', 'NEW');
+    const resolved = incident('Projector flickers', 'RESOLVED');
+    for (const i of [untriaged, resolved]) await incidents.save(i);
+    expect((await svc.slaRisks(admin)).map((r) => r.incidentId).sort()).toEqual(
+      [checkout.id, declined.id, timeout.id].sort(),
+    );
+    expect((await svc.slaRisks(employee)).map((r) => r.incidentId).sort()).toEqual(
+      [checkout.id, timeout.id].sort(),
+    );
   });
   it('scopesInsightsToIncidentsTheCallerMaySee', async () => {
     const result = await svc.insights(employee, checkout.id);

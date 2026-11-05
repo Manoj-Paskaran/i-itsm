@@ -65,6 +65,7 @@ export function useIncidentAction(id: string) {
     // Stay pending until the audit has refetched, so the roadmap never shows a reached step without its time.
     onSuccess: async (data) => {
       void client.invalidateQueries({ queryKey: ['incidents'] });
+      void client.invalidateQueries({ queryKey: ['incident-insights'] });
       await client.invalidateQueries({ queryKey: ['incident-audit', id] });
       client.setQueryData(['incident', id], data);
     },

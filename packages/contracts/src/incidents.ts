@@ -159,11 +159,23 @@ export const CorrelationClusterSchema = z.object({
   incidents: z.array(IncidentSummarySchema),
   reason: z.string(),
 });
+// IF-E / INV-4: advisory chance of breaching the resolution SLA, with the reasons behind it.
+// The producer derives `level` from `probability`: HIGH ≥ 0.7, MEDIUM ≥ 0.4, otherwise LOW.
+export const SlaRiskSchema = z.object({
+  probability: z.number().min(0).max(1),
+  level: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  reasons: z.array(z.string()),
+  source: insightSource,
+});
+/** One row of `GET /api/incidents/sla-risk`: risk for each visible open incident with an SLA. */
+export const SlaRiskEntrySchema = z.object({ incidentId: z.uuid(), risk: SlaRiskSchema });
 export const IncidentInsightsSchema = z.object({
   similar: z.array(SimilarIncidentSchema),
   cluster: CorrelationClusterSchema.nullable(),
   suggestedResolutions: z.array(SuggestedResolutionSchema),
   source: insightSource,
+  /** Null when the incident has no SLA or is resolved or closed. Optional only so older API builds still parse; read it as `slaRisk ?? null`. */
+  slaRisk: SlaRiskSchema.nullable().optional(),
 });
 export type CreateIncidentRequest = z.infer<typeof CreateIncidentRequestSchema>;
 export type IncidentSummary = z.infer<typeof IncidentSummarySchema>;
@@ -174,3 +186,5 @@ export type SimilarityRequest = z.infer<typeof SimilarityRequestSchema>;
 export type SuggestedResolution = z.infer<typeof SuggestedResolutionSchema>;
 export type CorrelationCluster = z.infer<typeof CorrelationClusterSchema>;
 export type IncidentInsights = z.infer<typeof IncidentInsightsSchema>;
+export type SlaRisk = z.infer<typeof SlaRiskSchema>;
+export type SlaRiskEntry = z.infer<typeof SlaRiskEntrySchema>;

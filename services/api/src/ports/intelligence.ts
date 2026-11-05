@@ -1,5 +1,6 @@
 import type { Incident } from '../domain/incidents/index.js';
-import type { IncidentId, ItServiceId } from '../domain/shared/index.js';
+import type { SlaRiskEstimate } from '../domain/intelligence/index.js';
+import type { IncidentId, Instant, ItServiceId } from '../domain/shared/index.js';
 
 /** Whether the rule-based fallback or the ML model produced a result. */
 export type InsightSource = 'rules' | 'model';
@@ -25,11 +26,18 @@ export interface IncidentCluster {
   readonly incidents: readonly Incident[];
   readonly windowMinutes: number;
 }
+/** Names the ML model was trained on, plus the time the risk is judged at. */
+export interface SlaRiskContext {
+  readonly serviceName: string;
+  readonly categoryName: string | null;
+  readonly now: Instant;
+}
 /** Only candidates the caller may see are considered; the application decides visibility. */
 export type CandidateFilter = (incident: Incident) => boolean;
 
 /**
- * Port for incident intelligence (IF-A duplicates, IF-B correlation, IF-G suggested resolutions).
+ * Port for incident intelligence (IF-A duplicates, IF-B correlation, IF-G suggested resolutions,
+ * IF-E SLA breach risk).
  * Advisory only: implementations never change an incident.
  */
 export interface IntelligencePort {
@@ -44,5 +52,7 @@ export interface IntelligencePort {
     visible: CandidateFilter,
     limit: number,
   ): Promise<Sourced<IncidentMatch[]>>;
+  /** Null when there is nothing to predict: no SLA, or the incident is already resolved. */
+  slaRisk(incident: Incident, context: SlaRiskContext): Promise<Sourced<SlaRiskEstimate | null>>;
 }
 export const INTELLIGENCE_PORT = Symbol('INTELLIGENCE_PORT');

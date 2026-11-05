@@ -13,6 +13,7 @@ import {
   RequestInfoSchema,
   ResolveRequestSchema,
   SimilarityRequestSchema,
+  SlaRiskSchema,
 } from './incidents.js';
 
 const id = '018f0662-2222-7222-8222-222222222222';
@@ -93,5 +94,16 @@ describe('incident intelligence', () => {
       IncidentInsightsSchema.safeParse({ ...insights, suggestedResolutions: [tooHigh] }).success,
     ).toBe(false);
     expect(IncidentInsightsSchema.safeParse({ ...insights, source: 'gpt' }).success).toBe(false);
+  });
+  it('acceptsSlaRiskWithLevelReasonsAndSource', () => {
+    const risk = {
+      probability: 0.82,
+      level: 'HIGH',
+      reasons: ['82% of window used'],
+      source: 'rules',
+    };
+    expect(SlaRiskSchema.safeParse(risk).success).toBe(true);
+    expect(SlaRiskSchema.safeParse({ ...risk, level: 'high' }).success).toBe(false);
+    expect(SlaRiskSchema.safeParse({ ...risk, probability: 1.2 }).success).toBe(false);
   });
 });

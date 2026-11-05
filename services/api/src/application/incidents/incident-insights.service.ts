@@ -2,12 +2,14 @@ import type {
   IncidentInsights,
   SimilarIncident,
   SimilarityRequest,
+  SlaRisk,
+  SlaRiskEntry,
   SuggestedResolution,
 } from '@itsm/contracts';
 import { IncidentNotFoundException } from '../../domain/exceptions/index.js';
 import type { Incident } from '../../domain/incidents/index.js';
 import { CorrelationPolicy } from '../../domain/intelligence/index.js';
-import { asIncidentId, asItServiceId } from '../../domain/shared/index.js';
+import { asIncidentId, asItServiceId, SystemClock, type Clock } from '../../domain/shared/index.js';
 import { Permission as P, type User } from '../../domain/users/index.js';
 import type {
   IncidentMatch,
@@ -38,6 +40,7 @@ export class IncidentInsightsService {
     private readonly incidents: IncidentRepository,
     private readonly intelligence: IntelligencePort,
     private readonly mapper: IncidentViewMapper,
+    private readonly clock: Clock = new SystemClock(),
   ) {}
   async insights(user: User, id: string): Promise<IncidentInsights> {
     const incident = await this.incidents.findById(asIncidentId(id));
@@ -51,11 +54,12 @@ export class IncidentInsightsService {
       serviceId: s.serviceId,
       excludeId: incident.id,
     };
-    const [similar, cluster, suggestions] = await Promise.all([
+    const [similar, cluster, suggestions, slaRisk] = await Promise.all([
       this.intelligence.similar(text, visible, SIMILAR_LIMIT),
       this.intelligence.cluster(incident, visible),
       // Over-fetch: recurring incidents often share one fix, and each fix is suggested once.
       this.intelligence.suggestResolutions(text, visible, SUGGESTION_LIMIT * 5),
+      this.risk(incident),
     ]);
     const members = cluster.result
       ? await Promise.all(cluster.result.incidents.map((i) => this.mapper.summary(i)))
@@ -80,7 +84,30 @@ export class IncidentInsightsService {
         SUGGESTION_LIMIT,
       ),
       source: [similar, cluster, suggestions].some((r) => r.source === 'model') ? 'model' : 'rules',
+      slaRisk,
     };
+  }
+  /** IF-E: breach risk of every open incident the caller may see, for the SLA monitor. */
+  async slaRisks(user: User): Promise<SlaRiskEntry[]> {
+    const open = (await this.incidents.listUnresolved()).filter((i) =>
+      IncidentVisibility.canView(user, i),
+    );
+    const rows = await Promise.all(
+      open.map(async (i): Promise<SlaRiskEntry | null> => {
+        const risk = await this.risk(i);
+        return risk && { incidentId: i.id, risk };
+      }),
+    );
+    return rows.filter((r) => r !== null);
+  }
+  private async risk(incident: Incident): Promise<SlaRisk | null> {
+    const summary = await this.mapper.summary(incident);
+    const { result, source } = await this.intelligence.slaRisk(incident, {
+      serviceName: summary.service.name,
+      categoryName: summary.category?.name ?? null,
+      now: this.clock.now(),
+    });
+    return result && { ...result, reasons: [...result.reasons], source };
   }
   /** Pre-submit "is this already reported?" check on the report form. */
   async similar(user: User, request: SimilarityRequest): Promise<SimilarIncident[]> {

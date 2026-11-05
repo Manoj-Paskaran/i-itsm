@@ -113,6 +113,7 @@ function nextAuditId() {
           incidents,
           intelligence,
           new IncidentViewMapper(incidents, users, services, categories, clock),
+          clock,
         ),
       inject: [
         INCIDENT_REPOSITORY,

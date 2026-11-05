@@ -1,4 +1,4 @@
-import type { IncidentDetail } from '@itsm/contracts';
+import type { IncidentDetail, SlaRisk } from '@itsm/contracts';
 import {
   AlarmClock,
   AlarmClockOff,
@@ -7,6 +7,7 @@ import {
   CircleCheck,
   CircleDot,
   Eye,
+  Gauge,
   Loader,
   MessageCircleQuestion,
   Pause,
@@ -18,6 +19,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { PRIORITY_LABEL, STATUS_LABEL, statusGroup } from '@/lib/incidents';
+import { riskExplanation, riskLabel } from '@/lib/insights';
 
 /** Quiet outline chip for facts that are not state (service, category). */
 export const chip =
@@ -104,6 +106,21 @@ export function SlaPill({ status }: { status: NonNullable<IncidentDetail['slaSta
     <span className={`${pill} ${fill}`}>
       <Icon size={14} strokeWidth={2} aria-hidden />
       {label}
+    </span>
+  );
+}
+
+const RISK_TONE = {
+  HIGH: 'border-transparent bg-critical-subtle text-critical-foreground',
+  MEDIUM: 'border-transparent bg-warning-subtle text-warning-foreground',
+  LOW: 'text-muted-foreground',
+} as const;
+/** IF-E advisory badge: outlined like a chip, not filled like the SLA pill, because it is a guess. */
+export function RiskBadge({ risk }: { risk: SlaRisk }) {
+  return (
+    <span className={`${chip} ${RISK_TONE[risk.level]}`} title={riskExplanation(risk)}>
+      <Gauge size={14} strokeWidth={2} aria-hidden />
+      {riskLabel(risk)}
     </span>
   );
 }

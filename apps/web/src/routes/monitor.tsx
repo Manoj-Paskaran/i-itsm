@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowUpRight } from 'lucide-react';
 import { AppShell, relativeAgo } from '@/components/app-shell';
-import { PriorityChip, SlaPill } from '@/components/incident/chips';
+import { PriorityChip, RiskBadge, SlaPill } from '@/components/incident/chips';
+import { useSlaRisks } from '@/lib/insights';
 import { useSlaReport } from '@/lib/reports';
 import { ESCALATION_LABEL, useIncidents } from '@/lib/incidents';
 import { slaWatchlist } from '@/lib/staff';
@@ -13,7 +14,11 @@ const percent = (value: number | null) => (value === null ? '—' : `${Math.roun
 function Monitor() {
   const report = useSlaReport();
   const incidents = useIncidents('limit=200');
-  const rows = slaWatchlist(incidents.data ?? []);
+  const risks = useSlaRisks();
+  const predictedHigh = new Set(
+    [...(risks.data ?? [])].filter(([, r]) => r.level === 'HIGH').map(([id]) => id),
+  );
+  const rows = slaWatchlist(incidents.data ?? [], predictedHigh);
   const tiles = [
     ['Breached, still open', report.data?.breachedOpen, 'text-critical-foreground'],
     ['At risk now', report.data?.atRiskNow, 'text-warning-foreground'],
@@ -29,7 +34,8 @@ function Monitor() {
       <header className="border-b border-border px-8 pt-5 pb-4 max-sm:px-4">
         <h1 className="text-xl font-semibold">SLA monitor</h1>
         <p className="text-sm text-muted-foreground">
-          Breached and at-risk incidents with their escalation level. Refreshes live.
+          Breached and at-risk incidents, plus on-track ones likely to miss their fix-by time.
+          Refreshes live.
         </p>
       </header>
       <div className="space-y-6 px-8 py-5 max-sm:px-4">
@@ -47,25 +53,31 @@ function Monitor() {
           <table className="w-full text-sm">
             <thead className="bg-panel text-left text-xs text-muted-foreground">
               <tr>
-                {['Incident', 'Priority', 'SLA', 'Escalated to', 'Assignee', 'Reported'].map(
-                  (h) => (
-                    <th key={h} className="px-4 py-2 font-medium">
-                      {h}
-                    </th>
-                  ),
-                )}
+                {[
+                  'Incident',
+                  'Priority',
+                  'SLA',
+                  'Resolution risk',
+                  'Escalated to',
+                  'Assignee',
+                  'Reported',
+                ].map((h) => (
+                  <th key={h} className="px-4 py-2 font-medium">
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {incidents.isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-4">
+                  <td colSpan={7} className="p-4">
                     <div className="h-6 animate-pulse rounded bg-muted" />
                   </td>
                 </tr>
               ) : incidents.isError ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-critical-foreground">
+                  <td colSpan={7} className="p-6 text-center text-critical-foreground">
                     Could not load incidents.
                   </td>
                 </tr>
@@ -91,6 +103,13 @@ function Monitor() {
                       {i.slaStatus && <SlaPill status={i.slaStatus} />}
                     </td>
                     <td className="px-4 py-2.5">
+                      {risks.data?.get(i.id) ? (
+                        <RiskBadge risk={risks.data.get(i.id)!} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
                       {i.escalationLevel === 'TECHNICIAN' ? (
                         <span className="text-muted-foreground">Not escalated</span>
                       ) : (
@@ -108,7 +127,7 @@ function Monitor() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     Every open incident is on track.
                   </td>
                 </tr>

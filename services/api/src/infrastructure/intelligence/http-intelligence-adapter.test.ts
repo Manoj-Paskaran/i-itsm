@@ -3,7 +3,8 @@ import { RuleBasedIntelligenceAdapter } from '../../application/incidents/rule-b
 import { InMemoryIncidentRepository } from '../../application/testing/in-memory-incident-repository.js';
 import { Incident } from '../../domain/incidents/index.js';
 import { inState, snapshot } from '../../domain/incidents/test-fixtures.js';
-import { asIncidentId } from '../../domain/shared/index.js';
+import { asIncidentId, Duration } from '../../domain/shared/index.js';
+import { later } from '../../domain/incidents/test-fixtures.js';
 import { cosine, HttpIntelligenceAdapter } from './http-intelligence-adapter.js';
 
 const json = (body: unknown, status = 200) =>
@@ -66,6 +67,48 @@ describe('HttpIntelligenceAdapter', () => {
     const { adapter, open } = await setup(fetchFn);
     expect((await adapter.cluster(open, () => true)).source).toBe('rules');
     expect((await adapter.suggestResolutions(query, () => true, 3)).source).toBe('rules');
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+  const context = { serviceName: 'Office WiFi', categoryName: 'Network', now: later };
+  it('asksTheMlModelForSlaRiskAndKeepsRuleReasons', async () => {
+    const fetchFn = vi.fn(() => json({ probability: 0.812, level: 'high', source: 'model' }));
+    const { adapter, open } = await setup(fetchFn);
+    const { result, source } = await adapter.slaRisk(open, context);
+    expect(source).toBe('model');
+    expect(result).toEqual({
+      probability: 0.81,
+      level: 'HIGH',
+      reasons: ['50% of the resolution window used', 'P2 has a tight window'],
+    });
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe('http://ml:8001/v1/sla-risk');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      priority: 'P2',
+      service: 'Office WiFi',
+      category: 'Network',
+      minutesOpen: 60,
+      minutesToDeadline: 60,
+    });
+  });
+  it.each([
+    ['an unreachable service', () => Promise.reject(new TypeError('fetch failed'))],
+    ['a missing probability', () => json({ level: 'high' })],
+    ['a 422 validation error', () => json({}, 422)],
+    ['a probability above 1', () => json({ probability: 1.5 })],
+  ])('fallsBackToRuleSlaRiskOn %s', async (_, response) => {
+    const { adapter, open } = await setup(vi.fn(response));
+    const { result, source } = await adapter.slaRisk(open, context);
+    expect(source).toBe('rules');
+    expect(result).toMatchObject({ probability: 0.6, level: 'MEDIUM' });
+  });
+  it('skipsTheModelOnceTheResolutionDeadlineHasPassed', async () => {
+    const fetchFn = vi.fn(() => json({ probability: 0.35 }));
+    const { adapter, open } = await setup(fetchFn);
+    const pastDeadline = { ...context, now: later.plus(Duration.ofHours(2)) };
+    expect(await adapter.slaRisk(open, pastDeadline)).toMatchObject({
+      result: { probability: 1, level: 'HIGH' },
+      source: 'rules',
+    });
     expect(fetchFn).not.toHaveBeenCalled();
   });
   it('computesCosineSimilarityAndZeroForAZeroVector', () => {

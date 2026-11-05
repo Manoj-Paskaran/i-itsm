@@ -2,7 +2,9 @@ import type { IncidentDetail } from '@itsm/contracts';
 import { Check, UserX } from 'lucide-react';
 import { initials } from '@/components/app-shell';
 import { CRITICALITY_LABEL, formatAssignmentReason, formatRationale } from '@/lib/incidents';
+import { useWorkspaceInsights } from '@/lib/insights';
 import { PriorityChip } from './chips';
+import { RelatedPanel, SuggestedResolutions } from './insights-panel';
 import { AssignPanel, DuplicatePanel } from './staff-actions';
 export function formatDate(value: string) {
   return new Date(value).toLocaleString('en-GB', {
@@ -14,6 +16,7 @@ export function formatDate(value: string) {
   });
 }
 export function ContextPanel({ detail }: { detail: IncidentDetail }) {
+  const insights = useWorkspaceInsights(detail);
   return (
     <aside
       aria-label="Incident context"
@@ -63,7 +66,9 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
           )}
           <AssignPanel detail={detail} />
         </section>
+        {insights && <RelatedPanel detail={detail} insights={insights} />}
         <DuplicatePanel detail={detail} />
+        {insights && <SuggestedResolutions insights={insights} />}
         <section>
           <h2 className="mb-2 text-xs font-semibold text-muted-foreground">Details</h2>
           <dl className="grid grid-cols-[96px_1fr] gap-y-2 text-sm">

@@ -45,6 +45,12 @@ describe('staff screens', () => {
         row('5', 'BREACHED', 'TECHNICIAN', 'CLOSED'),
       ]).map((i: { id: string }) => i.id),
     ).toEqual(['4', '2', '1']));
+  it('alsoWatchesOnTrackIncidentsPredictedHighRisk', () =>
+    expect(
+      slaWatchlist([row('1', 'ON_TRACK'), row('2', 'ON_TRACK')], new Set(['2'])).map(
+        (i: { id: string }) => i.id,
+      ),
+    ).toEqual(['2']));
   it('offersOnlyOtherOpenIncidentsOnTheSameServiceAsDuplicateTargets', () =>
     expect(
       duplicateCandidates({ id: '1', service: { id: 's1' } } as never, [
