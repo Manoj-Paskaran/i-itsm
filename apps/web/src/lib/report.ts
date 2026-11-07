@@ -27,15 +27,19 @@ export interface ReportForm {
 /** Mirrors CreateIncidentRequestSchema so the reporter sees the problem before submitting. */
 export function reportErrors(form: ReportForm) {
   const errors: Partial<Record<keyof ReportForm, string>> = {};
-  if (form.title.trim().length < 3) errors.title = 'Give the problem a short title.';
+  if (form.title.trim().length < 3) errors.title = 'Use at least 3 characters for the title.';
+  else if (form.title.trim().length > 200)
+    errors.title = 'Keep the title to 200 characters or fewer.';
   if (form.description.trim().length < 10)
-    errors.description = 'Describe what happens in a sentence or two.';
+    errors.description = 'Describe what happens in at least 10 characters.';
+  else if (form.description.trim().length > 5000)
+    errors.description = 'Keep the description to 5,000 characters or fewer.';
   if (!form.serviceId) errors.serviceId = 'Choose the affected service.';
   if (!form.impact) errors.impact = 'Choose how badly work is affected.';
   if (!form.urgency) errors.urgency = 'Choose how soon it needs fixing.';
   const users = Number(form.affectedUsers);
   if (!Number.isInteger(users) || users < 1 || users > 1_000_000)
-    errors.affectedUsers = 'Enter a whole number of people, at least 1.';
+    errors.affectedUsers = 'Enter a whole number from 1 to 1,000,000.';
   return errors;
 }
 

@@ -38,3 +38,7 @@ coverage/
 *.tsbuildinfo
 apps/web/dev-dist/
 
+
+# Playwright artifacts (may contain authenticated demo screenshots/traces)
+e2e/test-results/
+e2e/playwright-report/

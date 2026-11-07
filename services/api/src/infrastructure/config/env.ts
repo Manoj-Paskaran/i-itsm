@@ -24,8 +24,33 @@ const EnvSchema = z.object({
   MONITOR_INTERVAL_MS: z.coerce.number().int().min(1000).default(10000),
   ESCALATION_POLICY: z.enum(['demo', 'standard']).optional(),
   SMTP_URL: z.url().default('smtp://localhost:1025'),
+  MAIL_FROM: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().default('I-ITSM <noreply@itsm.demo>'),
+  ),
+  EMAIL_ALLOWLIST: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().optional(),
+  ),
+  // Only the seed script interprets and validates this mapping.
+  DEMO_EMAIL_OVERRIDE: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().optional(),
+  ),
   NOTIFICATIONS_EMAIL_ENABLED: z.stringbool().optional(),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
+  GOOGLE_CLIENT_ID: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().optional(),
+  ),
+  GOOGLE_CLIENT_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().optional(),
+  ),
+  GOOGLE_REDIRECT_URI: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.url().default('http://localhost:5173/api/auth/google/callback'),
+  ),
   /** Python intelligence service; unset or unreachable means the rule-based fallback is used. */
   ML_SERVICE_URL: z.preprocess((value) => (value === '' ? undefined : value), z.url().optional()),
 });

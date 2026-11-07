@@ -130,7 +130,10 @@ export class IncidentService {
       },
       { ...identity, at: now, service: service ?? undefined, openIncidentsOfReporter: open },
     );
-    const category = this.suggester.suggest(`${cmd.title} ${cmd.description}`, categories).category;
+    const { category } = await this.suggester.suggest(
+      `${cmd.title} ${cmd.description}`,
+      categories,
+    );
     const assessment = this.priorities
       .active()
       .assess(

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export const AuthProvidersResponseSchema = z.object({ google: z.boolean() });
 export const RoleSchema = z.enum(['EMPLOYEE', 'TECHNICIAN', 'TEAM_LEAD', 'ADMIN', 'IT_MANAGER']);
 export const PermissionSchema = z.enum([
   'INCIDENT_REPORT',

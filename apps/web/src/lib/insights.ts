@@ -87,7 +87,7 @@ export function riskLabel(risk: Pick<SlaRisk, 'probability' | 'level'>) {
 /** Tooltip: the reasons behind the estimate and who produced it. */
 export function riskExplanation(risk: SlaRisk) {
   const by = risk.source === 'model' ? 'ML model' : 'rules';
-  return `Suggestion · advisory (${by}): ${risk.reasons.join(', ')}`;
+  return `Advisory suggestion (${by}): ${risk.reasons.join(', ')}`;
 }
 
 /** Risk for every open incident the viewer may see, keyed by incident id (SLA monitor). */

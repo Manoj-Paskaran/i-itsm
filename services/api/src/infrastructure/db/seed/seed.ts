@@ -23,7 +23,7 @@ import {
   Urgency,
 } from '../../../domain/shared/index.js';
 import { SlaCatalog, SlaPolicy, SlaTarget } from '../../../domain/sla/index.js';
-import { Role, Technician, UserFactory, type User } from '../../../domain/users/index.js';
+import { Technician, UserFactory, type User } from '../../../domain/users/index.js';
 import { loadEnv } from '../../config/env.js';
 import { createDatabase } from '../database.js';
 import { DrizzleAuditRepository } from '../repositories/audit.repository.js';
@@ -35,6 +35,7 @@ import { DrizzleIncidentRepository } from '../repositories/incident.repository.j
 import { DrizzleSlaPolicyRepository } from '../repositories/sla-policy.repository.js';
 import { DrizzleUserRepository } from '../repositories/user.repository.js';
 import { investigationNotes, templates } from './templates.js';
+import { buildSeedUsers, parseDemoEmailOverride } from './users.js';
 
 let idCounter = 0;
 const nextId = () => `00000000-0000-4000-8000-${(++idCounter).toString(16).padStart(12, '0')}`;
@@ -51,7 +52,9 @@ function pick<T>(items: readonly T[]): T {
   return items[Math.floor(random() * items.length)]!;
 }
 const at = (ms: number) => Instant.of(Math.round(ms));
-const connection = createDatabase(loadEnv().DATABASE_URL);
+const env = loadEnv();
+const seedUsers = buildSeedUsers(parseDemoEmailOverride(env.DEMO_EMAIL_OVERRIDE));
+const connection = createDatabase(env.DATABASE_URL);
 const db = connection.db;
 const userRepo = new DrizzleUserRepository(db);
 const incidentRepo = new DrizzleIncidentRepository(db);
@@ -121,63 +124,16 @@ async function main(): Promise<void> {
   const catalog = new SlaCatalog(policies);
   const passwordHash = await hash(password);
   const people = new Map<string, User>();
-  async function create(
-    name: string,
-    role: Role,
-    extra: {
-      department?: string;
-      skills?: string[];
-      maxActiveIncidents?: number;
-      experienceYears?: number;
-      team?: ReturnType<typeof asUserId>[];
-    } = {},
-  ) {
-    const first = name.split(' ')[0]!.toLowerCase();
+  for (const { team, ...draft } of seedUsers) {
     const user = UserFactory.create({
+      ...draft,
       id: asUserId(nextId()),
-      name,
-      email: `${first}@itsm.demo`,
       passwordHash,
-      role,
-      ...extra,
+      ...(team ? { team: team.map((name) => people.get(name)!.id()) } : {}),
     });
     await userRepo.save(user);
-    people.set(first, user);
-    return user;
+    people.set(draft.name.split(' ')[0]!.toLowerCase(), user);
   }
-  for (const [name, department] of [
-    ['Priya Sharma', 'Finance'],
-    ['Rahul Verma', 'Sales'],
-    ['Neha Gupta', 'HR'],
-    ['Arun Pillai', 'Operations'],
-  ])
-    await create(name!, Role.EMPLOYEE, { department: department! });
-  for (const [name, skills, cap, years] of [
-    ['Asha Iyer', ['database', 'network'], 5, 6],
-    ['Ben Thomas', ['network', 'hardware'], 4, 3],
-    ['Farah Ali', ['application', 'software'], 5, 4],
-    ['Gopal Das', ['cloud', 'storage'], 4, 5],
-    ["Irene D'Souza", ['security', 'authentication'], 4, 7],
-  ] as const)
-    await create(name, Role.TECHNICIAN, {
-      skills: [...skills],
-      maxActiveIncidents: cap,
-      experienceYears: years,
-    });
-  await create('Chen Wei', Role.TEAM_LEAD, {
-    skills: ['database', 'cloud'],
-    maxActiveIncidents: 3,
-    experienceYears: 10,
-    team: [people.get('asha')!.id(), people.get('gopal')!.id()],
-  });
-  await create('Divya Nair', Role.TEAM_LEAD, {
-    skills: ['application', 'authentication'],
-    maxActiveIncidents: 3,
-    experienceYears: 9,
-    team: [people.get('ben')!.id(), people.get('farah')!.id(), people.get('irene')!.id()],
-  });
-  for (const name of ['Arjun Mehta', 'Sara Khan']) await create(name, Role.ADMIN);
-  for (const name of ['Kavya Reddy', 'Vikram Rao']) await create(name, Role.IT_MANAGER);
   const employees = ['priya', 'rahul', 'neha', 'arun'].map((name) => people.get(name)!);
   const techs = [...people.values()].filter(
     (person): person is Technician => person instanceof Technician,

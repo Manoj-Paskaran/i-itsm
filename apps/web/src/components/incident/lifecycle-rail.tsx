@@ -96,7 +96,7 @@ export function LifecycleRail({ detail, audit }: { detail: IncidentDetail; audit
               {step.note && <div className="text-xs text-muted-foreground">{step.note}</div>}
               {step.sla && (
                 <div className={`mt-0.5 text-xs tabular ${TONE[step.sla.tone]}`}>
-                  <Segments text={step.sla.text} />
+                  <Segments text={step.sla.text} emphasiseLast tone={step.sla.tone} />
                 </div>
               )}
             </div>
@@ -107,12 +107,25 @@ export function LifecycleRail({ detail, audit }: { detail: IncidentDetail; audit
   );
 }
 
-/** Keeps each "·" segment on one line so narrow steps wrap between phrases, not inside them. */
-function Segments({ text }: { text: string }) {
-  return text.split(' · ').map((part, i) => (
+/** Stack phrases in desktop columns; keep the compact, separated form in the vertical rail. */
+function Segments({
+  text,
+  emphasiseLast = false,
+  tone = 'muted',
+}: {
+  text: string;
+  emphasiseLast?: boolean;
+  tone?: Tone;
+}) {
+  const parts = text.split(' · ');
+  return parts.map((part, i) => (
     <Fragment key={i}>
-      {i > 0 && ' · '}
-      <span className="whitespace-nowrap">{part}</span>
+      {i > 0 && <span className="lg:hidden"> · </span>}
+      <span
+        className={`whitespace-nowrap lg:block lg:whitespace-normal ${emphasiseLast && i > 0 && part !== 'paused' ? `font-medium ${tone === 'muted' ? 'text-foreground' : ''}` : ''}`}
+      >
+        {part}
+      </span>
     </Fragment>
   ));
 }

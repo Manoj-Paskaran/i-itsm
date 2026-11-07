@@ -9,3 +9,5 @@ docs/spec
 .github/workflows/ml.yml
 
 **/routeTree.gen.ts
+e2e/test-results
+e2e/playwright-report

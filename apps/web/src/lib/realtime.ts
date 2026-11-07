@@ -40,6 +40,9 @@ export function useRealtime() {
       void client.invalidateQueries({ queryKey: ['incident', payload.incidentId] });
       void client.invalidateQueries({ queryKey: ['incident-audit', payload.incidentId] });
       void client.invalidateQueries({ queryKey: ['incidents'] });
+      void client.invalidateQueries({ queryKey: ['reports'] });
+      void client.invalidateQueries({ queryKey: ['sla-risk'] });
+      void client.invalidateQueries({ queryKey: ['audit'] });
     });
     return () => {
       socket.disconnect();

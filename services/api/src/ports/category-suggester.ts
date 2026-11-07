@@ -4,10 +4,10 @@ export interface CategorySuggester {
   suggest(
     text: string,
     categories: readonly Category[],
-  ): {
+  ): Promise<{
     category: Category;
     confidence: number;
     source: 'rules' | 'model';
-  };
+  }>;
 }
 export const CATEGORY_SUGGESTER = Symbol('CATEGORY_SUGGESTER');

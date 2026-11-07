@@ -15,9 +15,47 @@ describe('loadEnv', () => {
       MONITOR_INTERVAL_MS: 10000,
       ESCALATION_POLICY: 'demo',
       SMTP_URL: 'smtp://localhost:1025',
+      MAIL_FROM: 'I-ITSM <noreply@itsm.demo>',
       NOTIFICATIONS_EMAIL_ENABLED: true,
       WEB_ORIGIN: 'http://localhost:5173',
+      GOOGLE_REDIRECT_URI: 'http://localhost:5173/api/auth/google/callback',
     });
+  });
+  it('treatsBlankEmailSettingsAsUnset', () => {
+    expect(loadEnv({ MAIL_FROM: '', EMAIL_ALLOWLIST: '', DEMO_EMAIL_OVERRIDE: '' })).toMatchObject({
+      MAIL_FROM: 'I-ITSM <noreply@itsm.demo>',
+      EMAIL_ALLOWLIST: undefined,
+      DEMO_EMAIL_OVERRIDE: undefined,
+    });
+  });
+  it('passesEmailSettingsToTheirConsumers', () => {
+    const settings = {
+      MAIL_FROM: 'I-ITSM <sender@example.com>',
+      EMAIL_ALLOWLIST: 'you@example.com,other@example.com',
+      DEMO_EMAIL_OVERRIDE: 'priya@itsm.demo=you@example.com',
+    };
+    expect(loadEnv(settings)).toMatchObject(settings);
+  });
+  it('treatsBlankGoogleSettingsAsUnsetAndDefaultsRedirectUri', () => {
+    expect(
+      loadEnv({ GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '', GOOGLE_REDIRECT_URI: '' }),
+    ).toMatchObject({
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_CLIENT_SECRET: undefined,
+      GOOGLE_REDIRECT_URI: 'http://localhost:5173/api/auth/google/callback',
+    });
+    expect(
+      loadEnv({
+        GOOGLE_CLIENT_ID: 'id',
+        GOOGLE_CLIENT_SECRET: 'secret',
+        GOOGLE_REDIRECT_URI: 'https://demo.example/api/auth/google/callback',
+      }),
+    ).toMatchObject({
+      GOOGLE_CLIENT_ID: 'id',
+      GOOGLE_CLIENT_SECRET: 'secret',
+      GOOGLE_REDIRECT_URI: 'https://demo.example/api/auth/google/callback',
+    });
+    expect(() => loadEnv({ GOOGLE_REDIRECT_URI: 'not a url' })).toThrow(/GOOGLE_REDIRECT_URI/);
   });
   it('treatsABlankMlServiceUrlAsUnsetAndRejectsANonUrl', () => {
     expect(loadEnv({ ML_SERVICE_URL: '' }).ML_SERVICE_URL).toBeUndefined();

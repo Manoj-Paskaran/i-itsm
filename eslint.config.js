@@ -16,6 +16,8 @@ export default tseslint.config(
       'services/ml/**',
       '**/*.config.*',
       '**/routeTree.gen.ts',
+      'e2e/test-results/**',
+      'e2e/playwright-report/**',
     ],
   },
   js.configs.recommended,

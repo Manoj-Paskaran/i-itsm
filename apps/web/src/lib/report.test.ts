@@ -24,6 +24,28 @@ describe('report form', () => {
     expect(reportErrors({ ...valid, affectedUsers: '0' }).affectedUsers).toBeDefined();
     expect(reportErrors({ ...valid, affectedUsers: '2.5' }).affectedUsers).toBeDefined();
   });
+  it('rejectsATitleOverTwoHundredCharacters', () => {
+    expect(reportErrors({ ...valid, title: 'x'.repeat(201) }).title).toBeDefined();
+    expect(reportErrors({ ...valid, title: 'x'.repeat(200) }).title).toBeUndefined();
+  });
+  it('rejectsADescriptionOverFiveThousandCharacters', () => {
+    expect(reportErrors({ ...valid, description: 'x'.repeat(5001) }).description).toBeDefined();
+    expect(reportErrors({ ...valid, description: 'x'.repeat(5000) }).description).toBeUndefined();
+  });
+  it('acceptsLengthLimitsAfterTrimmingWhitespace', () => {
+    expect(
+      reportErrors({
+        ...valid,
+        title: '  ' + 'x'.repeat(200) + '  ',
+        description: '  ' + 'x'.repeat(5000) + '  ',
+      }),
+    ).toEqual({});
+  });
+  it('rejectsAffectedUsersOutsideTheAllowedRange', () => {
+    for (const affectedUsers of ['', '-1', '1000001', 'not a number'])
+      expect(reportErrors({ ...valid, affectedUsers }).affectedUsers).toBeDefined();
+    expect(reportErrors({ ...valid, affectedUsers: '1000000' }).affectedUsers).toBeUndefined();
+  });
   it('namesTheHomeListByRole', () =>
     expect([
       homeLabel({ role: 'EMPLOYEE', permissions: [] }),

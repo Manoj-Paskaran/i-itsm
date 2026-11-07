@@ -148,37 +148,77 @@ export function secondaryActions(allowed: Action[]) {
 }
 const AUDIT_LEVELS: Record<string, string> = {
   'Team Lead': ESCALATION_LABEL.TEAM_LEAD,
+  'Sys Admin': ESCALATION_LABEL.SYS_ADMIN,
   'System Administrator': ESCALATION_LABEL.SYS_ADMIN,
+  'It Manager': ESCALATION_LABEL.IT_MANAGER,
   'IT Manager': ESCALATION_LABEL.IT_MANAGER,
 };
-export function humanizeAudit(description: string, number: string) {
-  const text = description
+export function humanizeLevels(text: string): string {
+  return text.replace(
+    /( to |→ )(Team Lead|Sys Admin|System Administrator|It Manager|IT Manager)\b/g,
+    (_, prefix: string, level: string) => `${prefix}${AUDIT_LEVELS[level]}`,
+  );
+}
+const compact = (duration: string) =>
+  duration
+    .replace(/^(\d+) s$/, (_, seconds: string) => {
+      const n = Number(seconds);
+      return n < 60 ? `${n}s` : `${Math.floor(n / 60)}m${n % 60 ? ` ${n % 60}s` : ''}`;
+    })
+    .replace(/^(\d+) min$/, '$1m');
+export function humanizeAudit(description: string, number: string, actorName?: string) {
+  const text = humanizeLevels(description)
     .replace(new RegExp(`^Incident ${number} `), '')
     .replace(new RegExp(` (?:on |to |for )?incident ${number}`, 'gi'), '')
     .replace(/ \((?:EMPLOYEE|TECHNICIAN|TEAM_LEAD|ADMIN|IT_MANAGER)\)/g, '')
-    .replace(
-      /→ (Team Lead|System Administrator|IT Manager)/g,
-      (_, level: string) => `→ ${AUDIT_LEVELS[level]}`,
-    )
     .replace(
       /\b(RESPONSE|RESOLUTION) SLA\b/g,
       (_, target: string) => `${target[0]}${target.slice(1).toLowerCase()} SLA`,
     )
     .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) =>
       new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    );
+    )
+    .replace(
+      /^[Cc]lassified as ([A-Z][A-Z_]+)\.?$/,
+      (_, category: string) =>
+        `Classified as ${category.charAt(0)}${category.slice(1).toLowerCase().replaceAll('_', ' ')}`,
+    )
+    .replace(/^priority changed from unassigned to (P\d)/i, 'Priority set to $1')
+    .replace(
+      /^(Response|Resolution) SLA breached deadline (\d{2}:\d{2})\.?$/,
+      '$1 SLA breached (due $2)',
+    )
+    .replace(
+      /^(Response|Resolution) SLA approaching deadline (\d{2}:\d{2})\.?$/,
+      '$1 SLA at risk (due $2)',
+    )
+    .replace(
+      /^(P\d) unacknowledged for (.+?) \(threshold (.+?)\) → (.+)$/,
+      (_, priority: string, elapsed: string, threshold: string, level: string) =>
+        `Escalated to ${level}: ${priority} unacknowledged for ${compact(elapsed)} (limit ${compact(threshold)})`,
+    )
+    .replace(/^resolved: resolved\.?$/i, actorName ? `Resolved by ${actorName}` : 'Resolved')
+    .replace(/^closed: RESOLVED\.?$/i, 'Closed')
+    .replace(/^closed: DUPLICATE of (\S+?)\.?$/i, 'Closed as duplicate of $1')
+    .replace(/\.$/, '');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 export function waitingCopy(detail: IncidentDetail, viewerId?: string) {
   const reporter = detail.reporter.name;
-  if (detail.allowedActions.some((a) => a === 'assign' || a === 'closeAsDuplicate'))
-    return 'Reassign or close it as a duplicate from the side panel.';
+  const canAssign = detail.allowedActions.includes('assign');
+  const canDuplicate = detail.allowedActions.includes('closeAsDuplicate');
+  if (canAssign || canDuplicate)
+    return canAssign && canDuplicate
+      ? 'Reassign or close as duplicate in the side panel'
+      : canAssign
+        ? 'Reassign in the side panel'
+        : 'Close as duplicate in the side panel';
   if (viewerId === detail.reporter.id && detail.allowedActions.includes('giveFeedback'))
     return 'Closed. Tell us how we did below.';
   if (viewerId === detail.reporter.id && detail.status !== 'CLOSED')
     return "Nothing needed from you right now. We'll notify you when something changes.";
-  if (detail.status === 'PENDING_INFO') return `Waiting for ${reporter} to answer.`;
-  if (detail.status === 'RESOLVED') return `Waiting for ${reporter} to confirm the fix.`;
+  if (detail.status === 'PENDING_INFO') return `Waiting for ${reporter} to answer`;
+  if (detail.status === 'RESOLVED') return `Waiting for ${reporter} to confirm the fix`;
   if (detail.status === 'CLOSED') return 'Closed. No further actions.';
   return 'No actions available to you in this state.';
 }

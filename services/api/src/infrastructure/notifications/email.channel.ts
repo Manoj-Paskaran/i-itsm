@@ -1,8 +1,10 @@
+import { Logger } from '@nestjs/common';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type { NotificationMessage } from '../../application/notifications/notification-message.js';
 import { NetworkFailureException } from '../../domain/exceptions/index.js';
 import type { NotificationChannel } from '../../ports/index.js';
 import type { Env } from '../config/env.js';
+import { RecipientAllowlist } from './recipient-allowlist.js';
 const escapeHtml = (s: string) =>
   s
     .replaceAll('&', '&amp;')
@@ -12,22 +14,29 @@ const escapeHtml = (s: string) =>
     .replaceAll("'", '&#39;');
 export class EmailChannel implements NotificationChannel {
   readonly kind = 'EMAIL' as const;
+  private readonly logger = new Logger(EmailChannel.name);
+  private readonly allowlist: RecipientAllowlist;
   private readonly deliver: (options: SendMailOptions) => Promise<unknown>;
   constructor(
     private readonly env: Env,
     deliver?: (options: SendMailOptions) => Promise<unknown>,
   ) {
+    this.allowlist = new RecipientAllowlist(env.EMAIL_ALLOWLIST);
     const transport = nodemailer.createTransport(env.SMTP_URL);
     this.deliver = deliver ?? ((options) => transport.sendMail(options));
   }
   async send(message: NotificationMessage): Promise<void> {
+    if (!this.allowlist.allows(message.recipientEmail)) {
+      this.logger.debug('Skipped email: recipient is not on EMAIL_ALLOWLIST');
+      return;
+    }
     const link = message.incidentId
       ? `${this.env.WEB_ORIGIN.replace(/\/$/, '')}/incidents/${message.incidentId}`
       : null;
     const details = [message.body, message.incidentNumber, link].filter(Boolean).join('\n\n');
     try {
       await this.deliver({
-        from: 'I-ITSM <noreply@itsm.demo>',
+        from: this.env.MAIL_FROM,
         to: message.recipientEmail,
         subject: message.title,
         text: details,

@@ -287,15 +287,17 @@ describe('IncidentService rules', () => {
   });
 });
 describe('KeywordCategorySuggester rules', () => {
-  it('keywordSuggesterPicksDatabaseForSlowQueries', () => {
+  it('keywordSuggesterPicksDatabaseForSlowQueries', async () => {
     expect(
-      new KeywordCategorySuggester()
-        .suggest('slow database queries', [app, database])
-        .category.id(),
+      (
+        await new KeywordCategorySuggester().suggest('slow database queries', [app, database])
+      ).category.id(),
     ).toBe(database.id());
   });
-  it('keywordSuggesterFallsBackToApplication', () => {
-    expect(new KeywordCategorySuggester().suggest('something odd', [app, database])).toMatchObject({
+  it('keywordSuggesterFallsBackToApplication', async () => {
+    expect(
+      await new KeywordCategorySuggester().suggest('something odd', [app, database]),
+    ).toMatchObject({
       category: app,
       confidence: 0.2,
     });

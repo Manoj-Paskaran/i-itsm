@@ -1,10 +1,12 @@
 import type { IncidentDetail } from '@itsm/contracts';
 import { Check, UserX } from 'lucide-react';
 import { initials } from '@/components/app-shell';
-import { CRITICALITY_LABEL, formatAssignmentReason, formatRationale } from '@/lib/incidents';
+import { CRITICALITY_LABEL, formatAssignmentReason } from '@/lib/incidents';
 import { useWorkspaceInsights } from '@/lib/insights';
-import { PriorityChip } from './chips';
-import { RelatedPanel, SuggestedResolutions } from './insights-panel';
+import { useNow } from '@/lib/use-now';
+import { RiskBadge } from './chips';
+import { Advisory, RelatedPanel, SuggestedResolutions } from './insights-panel';
+import { PriorityCalculation } from './priority-calculation';
 import { AssignPanel, DuplicatePanel } from './staff-actions';
 export function formatDate(value: string) {
   return new Date(value).toLocaleString('en-GB', {
@@ -17,24 +19,17 @@ export function formatDate(value: string) {
 }
 export function ContextPanel({ detail }: { detail: IncidentDetail }) {
   const insights = useWorkspaceInsights(detail);
+  const now = useNow();
+  const riskReasons = insights?.slaRisk?.reasons.join(' · ') ?? '';
   return (
     <aside
       aria-label="Incident context"
-      className="self-start border-l border-border bg-panel px-5 py-6 max-lg:border-t max-lg:border-l-0"
+      className="min-w-0 border-l border-border bg-panel px-5 py-6 max-lg:border-t max-lg:border-l-0 max-sm:px-4"
     >
       <div className="space-y-6">
         <section>
           <h2 className="mb-2 text-xs font-semibold text-muted-foreground">Priority</h2>
-          <PriorityChip priority={detail.priority} />
-          {!!detail.priorityRationale.length && (
-            <ol className="mt-2 space-y-1 border-l border-border pl-2.5 text-xs leading-5 text-foreground tabular">
-              {detail.priorityRationale.map((reason, i) => (
-                <li key={i} className="whitespace-pre-line">
-                  {formatRationale(reason)}
-                </li>
-              ))}
-            </ol>
-          )}
+          <PriorityCalculation detail={detail} />
         </section>
         <section>
           <h2 className="mb-2 text-xs font-semibold text-muted-foreground">Assignee</h2>
@@ -66,23 +61,33 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
           )}
           <AssignPanel detail={detail} />
         </section>
+        {insights?.slaRisk &&
+          detail.slaDeadlines &&
+          Date.parse(detail.slaDeadlines.resolution) > now.getTime() && (
+            <section>
+              <h2 className="mb-1 text-xs font-semibold text-muted-foreground">Breach forecast</h2>
+              <Advisory source={insights.slaRisk.source} />
+              <RiskBadge risk={insights.slaRisk} />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {riskReasons.charAt(0).toUpperCase() + riskReasons.slice(1)}
+              </p>
+            </section>
+          )}
         {insights && <RelatedPanel detail={detail} insights={insights} />}
         <DuplicatePanel detail={detail} />
         {insights && <SuggestedResolutions insights={insights} />}
         <section>
           <h2 className="mb-2 text-xs font-semibold text-muted-foreground">Details</h2>
-          <dl className="grid grid-cols-[96px_1fr] gap-y-2 text-sm">
+          <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-y-2 text-sm">
             {[
-              [
-                'Service',
-                `${detail.service.name} · ${CRITICALITY_LABEL[detail.service.criticality]}`,
-              ],
+              ['Service', detail.service.name],
+              ['Criticality', CRITICALITY_LABEL[detail.service.criticality]],
               ['Reporter', detail.reporter.name],
               ...(detail.reopenCount ? [['Reopened', String(detail.reopenCount)]] : []),
             ].map(([label, value]) => (
               <div key={label} className="contents">
                 <dt className="text-xs leading-5 text-muted-foreground">{label}</dt>
-                <dd className="tabular">{value}</dd>
+                <dd className="min-w-0 break-words tabular">{value}</dd>
               </div>
             ))}
           </dl>

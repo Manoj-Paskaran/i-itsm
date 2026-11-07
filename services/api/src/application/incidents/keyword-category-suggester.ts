@@ -17,7 +17,8 @@ const keywords: Record<string, readonly string[]> = {
 const stem = (word: string) => word.replace(/(?:ing|s)$/, '');
 
 export class KeywordCategorySuggester implements CategorySuggester {
-  suggest(text: string, categories: readonly Category[]) {
+  // eslint-disable-next-line @typescript-eslint/require-await -- Synchronous rules implement the async port.
+  async suggest(text: string, categories: readonly Category[]) {
     const lower = text.toLowerCase();
     let best: Category | undefined;
     let hits = 0;

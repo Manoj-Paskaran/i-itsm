@@ -51,7 +51,7 @@ export function formatClock(at: Date, now: Date) {
   const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   return at.toDateString() === now.toDateString()
     ? time
-    : `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
+    : `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).replace(' ', '\u00a0')},\u00a0${time}`;
 }
 
 /** When the incident last entered `status`, from the audit trail. */
@@ -80,20 +80,20 @@ export function phaseLine(detail: IncidentDetail, viewerId?: string): RoadmapSte
     case 'CLASSIFIED':
       return { text: 'Assigning', tone: 'primary' };
     case 'ASSIGNED':
-      return { text: `Acknowledging · waiting for ${assignee}`, tone: 'primary' };
+      return { text: `Acknowledging · waiting for\u00a0${assignee}`, tone: 'primary' };
     case 'ACKNOWLEDGED':
-      return { text: `Starting work · ${assignee}`, tone: 'primary' };
+      return { text: `Starting work · waiting for\u00a0${assignee}`, tone: 'primary' };
     case 'IN_PROGRESS':
-      return { text: `Resolving · ${assignee}`, tone: 'primary' };
+      return { text: `Resolving · with\u00a0${assignee}`, tone: 'primary' };
     case 'PENDING_INFO':
       return {
-        text: self ? 'Waiting for your answer' : `Waiting for info from ${reporter}`,
+        text: self ? 'Waiting for your answer' : `Waiting for info from\u00a0${reporter}`,
         tone: 'warning',
       };
     case 'REOPENED':
-      return { text: `Reopened · waiting for ${assignee}`, tone: 'warning' };
+      return { text: `Reopened · waiting for\u00a0${assignee}`, tone: 'warning' };
     case 'RESOLVED':
-      return { text: `Confirming fix · waiting for ${reporter}`, tone: 'primary' };
+      return { text: `Confirming fix · waiting for\u00a0${reporter}`, tone: 'primary' };
     case 'VERIFIED':
       return { text: 'Closing', tone: 'primary' };
     case 'CLOSED':

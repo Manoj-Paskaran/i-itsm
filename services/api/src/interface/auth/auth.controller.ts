@@ -14,6 +14,7 @@ import { Permission, type User } from '../../domain/users/index.js';
 import { ENV } from '../../infrastructure/config/config.module.js';
 import type { Env } from '../../infrastructure/config/env.js';
 import { CurrentUser, Public, RequirePermissions } from './decorators.js';
+import { refreshCookieOptions, setRefreshCookie } from './refresh-cookie.js';
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success)
@@ -27,13 +28,7 @@ export class AuthController {
     @Inject(ENV) private readonly env: Env,
   ) {}
   private respond(res: Response, session: Awaited<ReturnType<AuthService['login']>>): AuthResponse {
-    res.cookie('itsm_refresh', session.refresh.token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/api/auth',
-      secure: this.env.NODE_ENV === 'production',
-      maxAge: session.refresh.maxAgeSeconds * 1000,
-    });
+    setRefreshCookie(res, session.refresh, this.env);
     return AuthResponseSchema.parse({
       accessToken: session.access.token,
       expiresIn: session.access.expiresIn,
@@ -68,12 +63,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(204)
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('itsm_refresh', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/api/auth',
-      secure: this.env.NODE_ENV === 'production',
-    });
+    res.clearCookie('itsm_refresh', refreshCookieOptions(this.env));
   }
   @Get('me') me(@CurrentUser() user: User) {
     return this.auth.me(user.id());

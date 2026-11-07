@@ -39,9 +39,10 @@ export const percent = (value: number | null) =>
 
 export function formatMinutes(minutes: number | null) {
   if (minutes === null) return '—';
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const h = Math.floor(minutes / 60);
-  return h < 24
-    ? `${h}h ${String(Math.round(minutes % 60)).padStart(2, '0')}m`
-    : `${Math.floor(h / 24)}d ${h % 24}h`;
+  const rounded = Math.round(minutes);
+  if (rounded < 60) return `${rounded}m`;
+  const h = Math.floor(rounded / 60);
+  const d = Math.floor(h / 24);
+  const m = rounded % 60;
+  return [d ? `${d}d` : '', h % 24 ? `${h % 24}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ');
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IncidentDetail } from '@itsm/contracts';
-import { formatDuration, roadmap, type AuditEntry } from './roadmap';
+import { formatClock, formatDuration, roadmap, type AuditEntry } from './roadmap';
 
 const now = new Date('2026-11-04T10:30:00Z');
 const base = {
@@ -46,14 +46,20 @@ describe('lifecycle roadmap', () => {
     ));
   it('givesUpcomingStepsNoTime', () => expect(step({}, 'Resolved').reachedAt).toBeNull());
   it('saysWhoMustAcknowledgeWhileAssigned', () =>
-    expect(step({}, 'Acknowledged').phase?.text).toBe('Acknowledging · waiting for Farah'));
+    expect(step({}, 'Acknowledged').phase?.text).toBe('Acknowledging · waiting for\u00a0Farah'));
+  it('saysWhoMustStartWorkWhileAcknowledged', () =>
+    expect(step({ status: 'ACKNOWLEDGED' }, 'In progress').phase?.text).toBe(
+      'Starting work · waiting for\u00a0Farah',
+    ));
   it('showsResolvingWhileInProgress', () =>
-    expect(step({ status: 'IN_PROGRESS' }, 'Resolved').phase?.text).toBe('Resolving · Farah'));
+    expect(step({ status: 'IN_PROGRESS' }, 'Resolved').phase?.text).toBe(
+      'Resolving · with\u00a0Farah',
+    ));
   it('marksResolvedReachedAndVerifiedActiveWhileAwaitingConfirmation', () => {
     expect(step({ status: 'RESOLVED' }, 'Resolved').state).toBe('reached');
     expect(step({ status: 'RESOLVED' }, 'Verified')).toMatchObject({
       state: 'active',
-      phase: { text: 'Confirming fix · waiting for Priya', tone: 'primary' },
+      phase: { text: 'Confirming fix · waiting for\u00a0Priya', tone: 'primary' },
     });
   });
   it('showsClosingOnceVerified', () =>
@@ -61,12 +67,16 @@ describe('lifecycle roadmap', () => {
   it('keepsInProgressReachedAndWarnsWhileWaitingForInfo', () => {
     expect(step({ status: 'PENDING_INFO' }, 'In progress').state).toBe('reached');
     expect(step({ status: 'PENDING_INFO' }, 'Resolved').phase).toEqual({
-      text: 'Waiting for info from Priya',
+      text: 'Waiting for info from\u00a0Priya',
       tone: 'warning',
     });
   });
   it('makesInProgressActiveAgainAfterReopen', () =>
     expect(step({ status: 'REOPENED' }, 'In progress').state).toBe('active'));
+  it('keepsTheReopenedAssigneeWithTheWaitingPreposition', () =>
+    expect(step({ status: 'REOPENED' }, 'In progress').phase?.text).toBe(
+      'Reopened · waiting for\u00a0Farah',
+    ));
   it('countsDownToTheResponseDeadlineBeforeAcknowledge', () => {
     const sla = step({}, 'Acknowledged', trail.slice(0, 2)).sla;
     expect(sla?.text).toMatch(/^Response due .+ · 15m overdue$/);
@@ -127,6 +137,12 @@ describe('lifecycle roadmap', () => {
       ['Closed', 'reached', null],
     ]));
   it('formatsDurationsInDaysPastADay', () => expect(formatDuration(26 * 3600000)).toBe('1d 2h'));
+  it('keepsOtherDayDatesAndTimesTogether', () =>
+    expect(formatClock(new Date(2026, 10, 7, 22, 18), new Date(2026, 10, 6, 22, 0))).toBe(
+      '7\u00a0Nov,\u00a022:18',
+    ));
+  it('formatsSameDayClocksWithoutADate', () =>
+    expect(formatClock(new Date(2026, 10, 6, 22, 18), new Date(2026, 10, 6, 22, 0))).toBe('22:18'));
   it('keepsResponseMetAfterAReassignSendsTheIncidentBackToAssigned', () =>
     expect(step({ status: 'ASSIGNED' }, 'Acknowledged').sla?.text).toBe('Response met'));
   it('keepsTheWorkStartTimeAfterAnInfoRequestIsAnswered', () =>
@@ -154,7 +170,7 @@ describe('lifecycle roadmap', () => {
     ).toBe('Duplicate of INC0042'));
   it('tellsTheReporterTheFixIsWaitingForThem', () =>
     expect(roadmap({ ...base, status: 'RESOLVED' }, trail, now, 'p')[5]?.phase?.text).toBe(
-      'Confirming fix · waiting for you',
+      'Confirming fix · waiting for\u00a0you',
     ));
   it('asksTheReporterForTheirAnswerWhileWaitingForInfo', () =>
     expect(roadmap({ ...base, status: 'PENDING_INFO' }, trail, now, 'p')[4]?.phase?.text).toBe(

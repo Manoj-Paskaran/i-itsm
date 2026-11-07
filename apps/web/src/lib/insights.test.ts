@@ -38,7 +38,7 @@ describe('incident insights', () => {
     ).toBe('3 open Payment Gateway incidents in 2 h — likely common cause'));
   it('labelsRiskWithPercentThenLevel', () =>
     expect(riskLabel({ probability: 0.816, level: 'HIGH' })).toBe('Resolution risk 82% · High'));
-  it('explainsRiskWithReasonsAndSource', () =>
+  it('labelsRiskExplanationAsAnAdvisorySuggestionWithReasonsAndSource', () =>
     expect(
       riskExplanation({
         probability: 0.6,
@@ -47,6 +47,6 @@ describe('incident insights', () => {
         source: 'rules',
       }),
     ).toBe(
-      'Suggestion · advisory (rules): 50% of the resolution window used, P2 has a tight window',
+      'Advisory suggestion (rules): 50% of the resolution window used, P2 has a tight window',
     ));
 });

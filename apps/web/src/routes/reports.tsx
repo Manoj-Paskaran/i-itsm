@@ -1,22 +1,61 @@
 import type { TrendReport } from '@itsm/contracts';
 import { createFileRoute } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { formatMinutes, linePath, nearestIndex, niceMax, percent, ticks } from '@/lib/charts';
 import { useOverview, useServiceReport, useSlaReport, useTrends, useWorkload } from '@/lib/reports';
 
 export const Route = createFileRoute('/reports')({ component: Reports });
 
-function Card({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+function Card({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <section className="rounded-lg border border-border p-4">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <section className="min-w-0 rounded-lg border border-border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+        </div>
+        {action}
+      </div>
       <div className="mt-3">{children}</div>
     </section>
   );
 }
-const Skeleton = () => <div className="h-40 animate-pulse rounded bg-muted" />;
+const Skeleton = () => (
+  <div role="status" className="h-40 animate-pulse rounded bg-muted">
+    <span className="sr-only">Loading report…</span>
+  </div>
+);
+const Empty = ({ children }: { children: ReactNode }) => (
+  <p className="py-6 text-sm text-muted-foreground">{children}</p>
+);
+function ReportError({ retry }: { retry: () => unknown }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-2 py-3 text-sm text-critical-foreground"
+    >
+      Could not load this report.
+      <button
+        className="min-h-10 rounded-md border border-border px-3 text-foreground hover:bg-hover sm:min-h-8"
+        onClick={() => void retry()}
+      >
+        Retry report
+      </button>
+    </div>
+  );
+}
 
 function Reports() {
   const overview = useOverview();
@@ -33,18 +72,24 @@ function Reports() {
     <AppShell>
       <header className="border-b border-border px-8 pt-5 pb-4 max-sm:px-4">
         <h1 className="text-xl font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground">
-          Read-only figures from the API, refreshed every 30 seconds.
-          {o && ` ${o.total.toLocaleString('en-IN')} incidents in total.`}
-        </p>
+        {o && (
+          <span className="text-xs text-muted-foreground tabular">
+            {o.total.toLocaleString('en-IN')} incidents
+          </span>
+        )}
       </header>
       <div className="space-y-4 px-8 py-5 max-sm:px-4">
+        {overview.isError && <ReportError retry={overview.refetch} />}
         <dl className="grid grid-cols-6 gap-3 max-xl:grid-cols-3 max-sm:grid-cols-2">
           {tiles.map(([label, value]) => (
             <div key={label} className="rounded-lg border border-border p-4">
               <dt className="text-xs text-muted-foreground">{label}</dt>
               <dd className="mt-1 text-2xl font-semibold tabular">
-                {overview.isLoading ? '…' : (value ?? '—')}
+                {overview.isLoading
+                  ? '…'
+                  : typeof value === 'number'
+                    ? value.toLocaleString('en-IN')
+                    : (value ?? '—')}
               </dd>
             </div>
           ))}
@@ -73,18 +118,25 @@ function Trends() {
   const trends = useTrends();
   const [table, setTable] = useState(false);
   return (
-    <Card title="Reported and resolved per day" hint="Last 30 days.">
-      <div className="-mt-9 mb-2 flex justify-end">
+    <Card
+      title="Reported and resolved per day"
+      hint="Last 30 days."
+      action={
         <button
-          className="h-7 rounded-md border border-border px-2.5 text-xs hover:bg-hover"
+          className="h-10 shrink-0 rounded-md border border-border px-3 text-xs hover:bg-hover sm:h-8"
           aria-pressed={table}
           onClick={() => setTable(!table)}
         >
           {table ? 'Show chart' : 'Show table'}
         </button>
-      </div>
-      {!trends.data ? (
+      }
+    >
+      {trends.isError ? (
+        <ReportError retry={trends.refetch} />
+      ) : !trends.data ? (
         <Skeleton />
+      ) : !trends.data.days.length ? (
+        <Empty>No daily incident data for this period.</Empty>
       ) : table ? (
         <TrendTable days={trends.data.days} />
       ) : (
@@ -102,16 +154,29 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
   const point = hover === null ? null : days[hover];
   return (
     <div>
-      <ul className="mb-2 flex gap-4 text-xs text-muted-foreground" aria-label="Legend">
-        {SERIES.map((s) => (
-          <li key={s.key} className="flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded" style={{ background: s.color }} />
-            {s.label}
-          </li>
-        ))}
-      </ul>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Incidents</span>
+        <ul className="flex gap-4" aria-label="Legend">
+          {SERIES.map((s) => (
+            <li key={s.key} className="flex items-center gap-1.5">
+              <svg width="16" height="4" aria-hidden>
+                <line
+                  x1="0"
+                  x2="16"
+                  y1="2"
+                  y2="2"
+                  stroke={s.color}
+                  strokeWidth="2"
+                  strokeDasharray={s.key === 'resolved' ? '4 3' : undefined}
+                />
+              </svg>
+              {s.label}
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="flex pr-20">
-        <div className="relative w-8 shrink-0 text-right text-2xs text-muted-foreground tabular">
+        <div className="relative w-8 shrink-0 text-right text-xs text-muted-foreground tabular">
           {ticks(max).map((t) => (
             <span
               key={t}
@@ -124,7 +189,7 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
         </div>
         <div
           ref={ref}
-          className="relative h-[180px] flex-1"
+          className="relative h-[180px] min-w-0 flex-1"
           onPointerMove={(e) => {
             const box = ref.current?.getBoundingClientRect();
             if (box) setHover(nearestIndex(e.clientX - box.left, box.width, days.length));
@@ -171,6 +236,7 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
                 fill="none"
                 stroke={s.color}
                 strokeWidth={2}
+                strokeDasharray={s.key === 'resolved' ? '6 4' : undefined}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
@@ -179,16 +245,21 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
           </svg>
           {last &&
             SERIES.map((s, i) => {
-              // Direct label at the line end; nudge the second label if the two would overlap.
+              // Separate coincident endpoints while keeping labels inside the plot height.
               const top = (1 - last[s.key] / max) * 100;
               const other = (1 - last[SERIES[1 - i]!.key] / max) * 100;
-              const nudge = i === 1 && Math.abs(top - other) < 10 ? (top >= other ? 10 : -10) : 0;
+              const labelTop =
+                Math.abs(top - other) < 12
+                  ? i === 0
+                    ? Math.max(4, Math.min(82, top - 6))
+                    : Math.max(16, Math.min(96, top + 6))
+                  : Math.max(4, Math.min(96, top));
               return (
                 <span
                   key={s.key}
                   aria-hidden
-                  className="absolute left-full ml-2 -translate-y-1/2 text-2xs whitespace-nowrap text-muted-foreground tabular"
-                  style={{ top: `${top + nudge}%` }}
+                  className="absolute left-full ml-2 -translate-y-1/2 text-xs whitespace-nowrap text-muted-foreground tabular"
+                  style={{ top: `${labelTop}%` }}
                 >
                   {s.label} {last[s.key]}
                 </span>
@@ -216,7 +287,7 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
           )}
         </div>
       </div>
-      <div className="ml-8 flex justify-between pt-1 text-2xs text-muted-foreground tabular">
+      <div className="ml-8 flex justify-between pt-2 pr-20 text-xs text-muted-foreground tabular">
         <span>{days[0] && dayLabel(days[0].date)}</span>
         <span>{last && dayLabel(last.date)}</span>
       </div>
@@ -226,7 +297,12 @@ function TrendChart({ days }: { days: TrendReport['days'] }) {
 
 function TrendTable({ days }: { days: TrendReport['days'] }) {
   return (
-    <div className="max-h-[220px] overflow-auto">
+    <div
+      className="max-h-[280px] overflow-auto"
+      role="region"
+      tabIndex={0}
+      aria-label="Daily incident counts"
+    >
       <table className="w-full text-sm tabular">
         <thead className="sticky top-0 bg-background text-left text-xs text-muted-foreground">
           <tr>
@@ -249,7 +325,7 @@ function TrendTable({ days }: { days: TrendReport['days'] }) {
   );
 }
 
-/** A single-series horizontal bar: label, a thin bar, the value in text ink. */
+/** A single-series comparison with a keyboard- and touch-accessible breakdown. */
 function Bar({
   label,
   value,
@@ -262,18 +338,23 @@ function Bar({
   detail: string;
 }) {
   return (
-    <li className="group relative grid grid-cols-[112px_1fr_56px] items-center gap-3 py-1">
-      <span className="truncate text-sm">{label}</span>
-      <span className="h-2 rounded-full bg-muted">
-        <span
-          className="block h-2 rounded-full bg-series-1"
-          style={{ width: `${Math.min(1, Math.max(0, ratio)) * 100}%` }}
-        />
-      </span>
-      <span className="text-right text-sm font-medium tabular">{value}</span>
-      <span className="pointer-events-none absolute -top-7 left-28 z-10 hidden rounded-md border border-border bg-card px-2 py-1 text-xs shadow-pop group-hover:block">
-        {detail}
-      </span>
+    <li>
+      <details className="group rounded-md open:bg-panel">
+        <summary className="grid min-h-10 cursor-pointer list-none grid-cols-[minmax(0,1fr)_minmax(40px,1fr)_auto] items-center gap-3 rounded-md py-1 text-sm hover:bg-hover sm:min-h-8 sm:grid-cols-[minmax(112px,1fr)_minmax(0,3fr)_56px] [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <ChevronDown size={12} aria-hidden className="shrink-0 group-open:rotate-180" />
+            <span className="break-words">{label}</span>
+          </span>
+          <span aria-hidden className="h-2 rounded-full bg-muted">
+            <span
+              className="block h-2 rounded-full bg-series-1"
+              style={{ width: `${Math.min(1, Math.max(0, ratio)) * 100}%` }}
+            />
+          </span>
+          <span className="text-right text-sm font-medium tabular">{value}</span>
+        </summary>
+        <p className="px-4 pt-1 pb-3 text-xs text-muted-foreground tabular">{detail}</p>
+      </details>
     </li>
   );
 }
@@ -285,12 +366,18 @@ function SlaByPriority() {
       title="SLA compliance by priority"
       hint={
         sla.data
-          ? `${percent(sla.data.compliance)} of incidents with a settled SLA met it.`
+          ? sla.data.compliance === null
+            ? 'No settled SLAs yet. Select a row for details.'
+            : `${percent(sla.data.compliance)} of settled SLAs met. Select a row for details.`
           : undefined
       }
     >
-      {!sla.data ? (
+      {sla.isError ? (
+        <ReportError retry={sla.refetch} />
+      ) : !sla.data ? (
         <Skeleton />
+      ) : !sla.data.byPriority.length ? (
+        <Empty>No SLA data available.</Empty>
       ) : (
         <ul>
           {sla.data.byPriority.map((p) => (
@@ -313,10 +400,14 @@ function Workload() {
   return (
     <Card
       title="Technician workload"
-      hint="Assigned incidents not yet closed, against each technician's capacity."
+      hint="Assigned incidents not yet closed / capacity. Select a row for details."
     >
-      {!workload.data ? (
+      {workload.isError ? (
+        <ReportError retry={workload.refetch} />
+      ) : !workload.data ? (
         <Skeleton />
+      ) : !workload.data.length ? (
+        <Empty>No technician workload to show.</Empty>
       ) : (
         <ul>
           {[...workload.data]
@@ -338,13 +429,110 @@ function Workload() {
 
 function Services() {
   const services = useServiceReport();
+  const [table, setTable] = useState(false);
+  const rows = [...(services.data ?? [])].sort((a, b) => b.total - a.total);
+  const max = niceMax(Math.max(0, ...rows.map((s) => s.total)));
   return (
-    <Card title="Incidents by service">
-      {!services.data ? (
+    <Card
+      title="Incidents by service"
+      hint="Counts can overlap: SLA violations may include incidents that are not closed."
+      action={
+        <button
+          className="h-10 shrink-0 rounded-md border border-border px-3 text-xs hover:bg-hover sm:h-8"
+          aria-pressed={table}
+          onClick={() => setTable(!table)}
+        >
+          {table ? 'Show chart' : 'Show table'}
+        </button>
+      }
+    >
+      {services.isError ? (
+        <ReportError retry={services.refetch} />
+      ) : !services.data ? (
         <Skeleton />
+      ) : !services.data.length ? (
+        <Empty>No service incidents to show.</Empty>
+      ) : !table ? (
+        <div>
+          <ul
+            aria-label="Service chart legend"
+            className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground"
+          >
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="h-2 w-4 rounded bg-border-strong" />
+              Total
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="h-2 w-4 rounded bg-series-1" />
+              Not closed
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="size-2 rounded-full border-2 border-series-2" />
+              SLA violations
+            </li>
+          </ul>
+          <ul aria-label="Service incident counts" className="space-y-1">
+            {rows.map((s) => (
+              <li key={s.service.id}>
+                <details className="group rounded-md open:bg-panel">
+                  <summary className="grid min-h-10 cursor-pointer list-none gap-2 rounded-md py-2 hover:bg-hover sm:grid-cols-[minmax(120px,1fr)_3fr_72px] sm:items-center sm:gap-4 [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <ChevronDown
+                        aria-hidden
+                        size={12}
+                        className="shrink-0 group-open:rotate-180"
+                      />
+                      {s.service.name}
+                    </span>
+                    <span aria-hidden className="space-y-1">
+                      <span className="relative block h-2 rounded bg-muted">
+                        <span
+                          className="block h-2 rounded bg-border-strong"
+                          style={{ width: `${(s.total / max) * 100}%` }}
+                        />
+                      </span>
+                      <span className="relative block h-2 rounded bg-muted">
+                        <span
+                          className="block h-2 rounded bg-series-1"
+                          style={{ width: `${(s.open / max) * 100}%` }}
+                        />
+                        <span
+                          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-series-2 bg-background"
+                          style={{ left: `${(s.slaViolations / max) * 100}%` }}
+                        />
+                      </span>
+                    </span>
+                    <span className="text-xs font-medium tabular sm:text-right">
+                      {s.total} total
+                    </span>
+                    <span className="text-xs text-muted-foreground tabular sm:col-start-2 sm:col-end-4">
+                      {s.open} not closed · {s.slaViolations} SLA violations
+                    </span>
+                  </summary>
+                  <p className="px-4 pb-3 text-xs text-muted-foreground tabular">
+                    {s.service.name}: {s.total} total incidents, {s.open} not closed,{' '}
+                    {s.slaViolations} SLA violations.
+                  </p>
+                </details>
+              </li>
+            ))}
+          </ul>
+          <div
+            aria-hidden
+            className="mt-2 flex justify-between text-2xs text-muted-foreground tabular"
+          >
+            <span>0 incidents</span>
+            <span>{max}</span>
+          </div>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm tabular">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Incidents by service"
+        >
+          <table className="w-full min-w-[440px] text-sm tabular">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-1.5 font-medium">Service</th>

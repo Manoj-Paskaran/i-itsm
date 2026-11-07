@@ -12,7 +12,9 @@ import {
   CirclePlus,
   Clock,
   Eye,
+  Hourglass,
   MessageCircleQuestion,
+  PanelRight,
   Play,
   Reply,
   RotateCcw,
@@ -43,7 +45,7 @@ import { useAuth } from '@/lib/auth';
 import { homeLabel } from '@/lib/report';
 import { formatClock } from '@/lib/roadmap';
 import { useNow } from '@/lib/use-now';
-import { chip, PriorityChip, RiskBadge, SlaPill, StatusPill } from './chips';
+import { chip, PriorityChip, SlaPill, StatusPill } from './chips';
 import { ContextPanel, formatDate } from './context-panel';
 import { ClusterBanner } from './insights-panel';
 import { useWorkspaceInsights } from '@/lib/insights';
@@ -79,7 +81,7 @@ const auditIcons: Record<string, typeof Circle> = {
   IncidentEscalated: ArrowUpRight,
 };
 const button =
-  'inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-base disabled:opacity-50';
+  'inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-base disabled:opacity-50 max-sm:min-h-10';
 const primary = 'bg-primary font-semibold text-primary-foreground hover:bg-primary-hover';
 export function IncidentWorkspace({ incidentId }: { incidentId: string }) {
   const query = useIncident(incidentId);
@@ -137,6 +139,14 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
   const [rootCause, setRootCause] = useState('');
   const mainAction = primaryAction(detail.allowedActions);
   const secondary = secondaryActions(detail.allowedActions);
+  const sidePanelAction = detail.allowedActions.some(
+    (action) => action === 'assign' || action === 'closeAsDuplicate',
+  );
+  const WaitingIcon = sidePanelAction
+    ? PanelRight
+    : detail.status === 'CLOSED'
+      ? CircleCheck
+      : Hourglass;
   function choose(action: keyof typeof ACTION_LABELS) {
     mutation.reset();
     if (['requestInfo', 'resolve', 'reject', 'provideInfo'].includes(action)) {
@@ -189,7 +199,7 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
           <h1 className="max-w-[60ch] text-balance text-2xl font-semibold tracking-[-0.015em]">
             {detail.title}
           </h1>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex max-w-full flex-wrap gap-2">
             {[...secondary, ...(mainAction ? [mainAction] : [])].map((action) => {
               const Icon = icons[action];
               return (
@@ -206,18 +216,24 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
                 </button>
               );
             })}
-            {!mainAction && !secondary.length && (
-              <span className="text-xs leading-9 text-muted-foreground">
-                {waitingCopy(detail, user?.id)}
-              </span>
-            )}
+            {!mainAction &&
+              !secondary.length &&
+              (user?.id === detail.reporter.id ? (
+                <p className="flex min-h-9 items-center text-sm leading-snug text-muted-foreground">
+                  {waitingCopy(detail, user?.id)}
+                </p>
+              ) : (
+                <span className="inline-flex min-h-9 max-w-full items-center gap-1.5 text-sm text-muted-foreground lg:max-w-[22rem]">
+                  <WaitingIcon size={14} className="shrink-0" aria-hidden />
+                  <span className="min-w-0">{waitingCopy(detail, user?.id)}</span>
+                </span>
+              ))}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <StatusPill status={detail.status} duplicate={detail.closure?.reason === 'DUPLICATE'} />
           <PriorityChip priority={detail.priority} />
           {detail.slaStatus && <SlaPill status={detail.slaStatus} />}
-          {insights?.slaRisk && <RiskBadge risk={insights.slaRisk} />}
           {detail.escalationLevel !== 'TECHNICIAN' && (
             <span className={`${chip} border-transparent bg-high-subtle text-high-foreground`}>
               <ArrowUpRight size={14} strokeWidth={2} aria-hidden />
@@ -308,7 +324,7 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
         )}
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_320px] max-lg:grid-cols-1">
-        <div className="space-y-8 px-8 py-6">
+        <div className="min-w-0 space-y-8 px-8 py-6 max-sm:px-4">
           {insights && <ClusterBanner insights={insights} currentId={detail.id} />}
           <section aria-labelledby="summary">
             <h2 id="summary" className="mb-2 text-sm font-semibold">
@@ -428,7 +444,7 @@ function Activity({ detail }: { detail: IncidentDetail }) {
         <button
           disabled={!note.trim() || mutation.isPending}
           onClick={addNote}
-          className="h-7 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50"
+          className="h-7 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50 max-sm:min-h-10"
         >
           {reporter ? 'Add information' : 'Add note'}
         </button>
@@ -453,7 +469,7 @@ function Activity({ detail }: { detail: IncidentDetail }) {
               key={value}
               aria-pressed={order === value}
               onClick={() => setOrder(value)}
-              className={`h-6 rounded px-2 text-xs ${order === value ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`h-6 rounded px-2 text-xs max-sm:min-h-10 ${order === value ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
               {value === 'newest' ? 'Newest' : 'Oldest'}
             </button>
@@ -521,8 +537,16 @@ function Activity({ detail }: { detail: IncidentDetail }) {
                   <Icon size={13} strokeWidth={2} aria-hidden />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 pt-0.5">
-                  <span>{humanizeAudit(entry.description, detail.number)}</span>
-                  {changed && entry.toStatus && <StatusPill status={entry.toStatus} small />}
+                  <span>{humanizeAudit(entry.description, detail.number, entry.actor?.name)}</span>
+                  {changed && entry.toStatus && (
+                    <StatusPill
+                      status={entry.toStatus}
+                      duplicate={
+                        entry.action === 'IncidentClosed' && detail.closure?.reason === 'DUPLICATE'
+                      }
+                      small
+                    />
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {entry.actor && !entry.description.includes(entry.actor.name) && (
                       <>{entry.actor.name} · </>

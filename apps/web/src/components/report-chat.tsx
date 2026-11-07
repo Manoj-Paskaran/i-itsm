@@ -16,6 +16,8 @@ export function ReportChat({
   onEditInForm,
   pending,
   error,
+  submitDisabled,
+  advisory,
 }: {
   /** Kept by /report so switching to the form and back keeps the conversation. */
   state: IntakeState;
@@ -27,6 +29,8 @@ export function ReportChat({
   onEditInForm: () => void;
   pending: boolean;
   error: React.ReactNode;
+  submitDisabled: boolean;
+  advisory: React.ReactNode;
 }) {
   const [text, setText] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -44,26 +48,35 @@ export function ReportChat({
   const replies = quickRepliesFor({ ...state, form }, services);
   return (
     <div className="rounded-lg border border-border">
-      <ol aria-live="polite" className="max-h-[420px] space-y-3 overflow-y-auto p-4">
+      <div
+        role="log"
+        aria-label="Report conversation"
+        aria-live="polite"
+        aria-relevant="additions text"
+        tabIndex={0}
+        className="max-h-[420px] space-y-3 overflow-y-auto p-4"
+      >
         {state.messages.map((m, i) => (
-          <li key={i} className={`flex gap-2 ${m.from === 'user' ? 'justify-end' : ''}`}>
+          <div key={i} className={`flex gap-2 ${m.from === 'user' ? 'justify-end' : ''}`}>
             {m.from === 'bot' && (
-              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-subtle text-primary">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
                 <Bot size={15} aria-hidden />
               </span>
             )}
             <p
-              className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${m.from === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
+              className={`min-w-0 max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${m.from === 'user' ? 'border border-border bg-background' : 'bg-muted'}`}
             >
+              <span className="sr-only">{m.from === 'user' ? 'You: ' : 'IT assistant: '}</span>
               {m.text}
             </p>
-          </li>
+          </div>
         ))}
         <div ref={end} />
-      </ol>
+      </div>
       {state.step === 'review' ? (
         <div className="space-y-4 border-t border-border p-4">
-          <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
+          <h2 className="text-base font-semibold">Review your report</h2>
+          <dl className="space-y-3 text-sm">
             {[
               ['Problem', form.title],
               ['Details', form.description],
@@ -72,27 +85,29 @@ export function ReportChat({
               ['Urgency', form.urgency ? LEVEL_LABEL[form.urgency] : '—'],
               ['People affected', Number(form.affectedUsers).toLocaleString('en-IN')],
             ].map(([label, value]) => (
-              <div key={label} className="contents">
-                <dt className="text-muted-foreground">{label}</dt>
-                <dd>{value}</dd>
+              <div key={label} className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-3">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="min-w-0 whitespace-pre-wrap break-words">{value}</dd>
               </div>
             ))}
           </dl>
           <p className="rounded-md bg-panel p-3 text-sm text-muted-foreground">
             {priorityPreview(form, service)}
           </p>
+          {advisory}
           {error}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={onSubmit}
-              disabled={pending}
-              className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-base font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+              disabled={pending || submitDisabled}
+              className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 text-base font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50 max-sm:w-full"
             >
               {pending ? 'Sending…' : 'Send report'}
             </button>
             <button
               onClick={onEditInForm}
-              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-base hover:bg-hover"
+              disabled={pending}
+              className="inline-flex min-h-10 items-center justify-center rounded-md border border-border px-4 text-base hover:bg-hover disabled:opacity-50 max-sm:w-full"
             >
               Edit in the form
             </button>
@@ -106,7 +121,7 @@ export function ReportChat({
                 <button
                   key={r.value}
                   onClick={() => send(r.value, r.label)}
-                  className="rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-hover"
+                  className="min-h-10 max-w-full rounded-md border border-border px-3 py-2 text-left text-sm font-medium break-words hover:bg-hover"
                 >
                   {r.label}
                 </button>
@@ -125,12 +140,12 @@ export function ReportChat({
               onChange={(e) => setText(e.target.value)}
               aria-label="Your reply"
               placeholder="Type your answer…"
-              className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-base"
+              className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-base placeholder:text-muted-foreground"
             />
             <button
               aria-label="Send reply"
               disabled={!text.trim()}
-              className="grid size-10 place-items-center rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+              className="grid size-10 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
             >
               <SendHorizontal size={16} aria-hidden />
             </button>

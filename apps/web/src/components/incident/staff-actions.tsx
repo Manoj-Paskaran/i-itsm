@@ -5,7 +5,7 @@ import { useIncidentAction, useIncidents, useRecommendations } from '@/lib/incid
 import { duplicateCandidates, formatScore } from '@/lib/staff';
 
 const small =
-  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50';
+  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50 max-sm:min-h-10';
 
 /** Team leads, admins and managers reassign with advisory recommendations (score and reasons). */
 export function AssignPanel({ detail }: { detail: IncidentDetail }) {
@@ -110,7 +110,7 @@ export function DuplicatePanel({ detail }: { detail: IncidentDetail }) {
             <select
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              className="mt-1 block h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+              className="mt-1 block h-8 w-full rounded-md border border-input bg-background px-2 text-sm max-sm:min-h-10"
             >
               <option value="">
                 {list.isLoading
@@ -139,7 +139,7 @@ export function DuplicatePanel({ detail }: { detail: IncidentDetail }) {
             </button>
             <button
               type="button"
-              className="text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-2"
               onClick={() => setOpen(false)}
             >
               Cancel

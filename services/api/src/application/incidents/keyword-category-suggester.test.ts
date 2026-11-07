@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
 import { Category } from '../../domain/catalog/index.js';
+import { InvalidInputException } from '../../domain/exceptions/index.js';
 import { asCategoryId } from '../../domain/shared/index.js';
 import { KeywordCategorySuggester } from './keyword-category-suggester.js';
 
-it('recognizes a newly configured category by its name', () => {
+it('recognizesANewlyConfiguredCategoryByItsName', async () => {
   const category = Category.create({
     id: asCategoryId('printing'),
     code: 'PRINTING',
@@ -12,6 +13,12 @@ it('recognizes a newly configured category by its name', () => {
     active: true,
   });
   expect(
-    new KeywordCategorySuggester().suggest('Printing queue is stuck', [category]).category,
+    (await new KeywordCategorySuggester().suggest('Printing queue is stuck', [category])).category,
   ).toBe(category);
+});
+
+it('rejectsWhenNoCategoryMatchesAndApplicationFallbackIsAbsent', async () => {
+  await expect(new KeywordCategorySuggester().suggest('Something odd', [])).rejects.toBeInstanceOf(
+    InvalidInputException,
+  );
 });

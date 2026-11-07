@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { AccountInactiveException, type ExternalIdentity } from './identity-provider.js';
 import type { AuthUser, RegisterRequest } from '@itsm/contracts';
 import {
   InvalidCredentialsException,
@@ -54,6 +55,20 @@ export class AuthService {
     const valid = await this.hasher.verify(user?.toSnapshot().passwordHash ?? DUMMY_HASH, password);
     if (!user || !valid || !user.isActive()) throw new InvalidCredentialsException();
     return this.session(user);
+  }
+  async loginWithExternalIdentity(identity: ExternalIdentity) {
+    const user = await this.users.findByEmail(Email.of(identity.email));
+    if (user) {
+      if (!user.isActive()) throw new AccountInactiveException();
+      return this.session(user);
+    }
+    // Google supplies no department. Reuse employee registration with an unknown random password.
+    return this.register({
+      email: identity.email,
+      name: identity.name,
+      department: 'Unspecified',
+      password: randomBytes(32).toString('hex'),
+    });
   }
   async refresh(token: string) {
     const { userId } = await this.tokens.verifyRefresh(token);

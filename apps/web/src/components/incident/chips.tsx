@@ -6,15 +6,12 @@ import {
   BadgeCheck,
   CircleCheck,
   CircleDot,
+  CirclePlay,
   Eye,
   Gauge,
-  Loader,
   MessageCircleQuestion,
   Pause,
   RotateCcw,
-  SignalHigh,
-  SignalLow,
-  SignalMedium,
   TriangleAlert,
   UserCheck,
 } from 'lucide-react';
@@ -24,25 +21,47 @@ import { riskExplanation, riskLabel } from '@/lib/insights';
 /** Quiet outline chip for facts that are not state (service, category). */
 export const chip =
   'inline-flex h-6 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium';
-const pill =
-  'inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-fill-foreground';
+const pill = 'inline-flex items-center gap-1.5 rounded-full font-semibold';
 
 const PRIORITY_STYLE = {
-  P1: ['bg-fill-critical text-fill-foreground border-transparent', TriangleAlert],
-  P2: ['bg-high-subtle text-high-foreground border-transparent', SignalHigh],
-  P3: ['bg-warning-subtle text-warning-foreground border-transparent', SignalMedium],
-  P4: ['bg-low-subtle text-low-foreground border-transparent', SignalLow],
+  P1: 'bg-fill-critical text-fill-foreground border-transparent',
+  P2: 'bg-high-subtle text-high-foreground border-transparent',
+  P3: 'bg-warning-subtle text-warning-foreground border-transparent',
+  P4: 'bg-low-subtle text-low-foreground border-transparent',
 } as const;
+const PRIORITY_LEVEL = { P2: 3, P3: 2, P4: 1 } as const;
+
+function PriorityBars({ level }: { level: 1 | 2 | 3 }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className="shrink-0">
+      {[0, 1, 2].map((i) => (
+        <rect
+          key={i}
+          x={1 + i * 4}
+          y={8 - i * 3}
+          width="2.5"
+          height={3 + i * 3}
+          rx="0.75"
+          fill="currentColor"
+          opacity={i < level ? 1 : 0.3}
+        />
+      ))}
+    </svg>
+  );
+}
 
 /** Every priority has colour; only P1 is a solid fill. */
 export function PriorityChip({ priority }: { priority: IncidentDetail['priority'] }) {
   if (!priority) return <span className={`${chip} text-muted-foreground`}>Not prioritised</span>;
-  const [style, Icon] = PRIORITY_STYLE[priority];
   return (
     <span
-      className={`${chip} ${style} ${priority === 'P1' ? 'font-semibold tracking-[0.02em]' : ''}`}
+      className={`${chip} ${PRIORITY_STYLE[priority]} ${priority === 'P1' ? 'font-semibold tracking-[0.02em]' : ''}`}
     >
-      <Icon size={14} strokeWidth={2} aria-hidden />
+      {priority === 'P1' ? (
+        <TriangleAlert size={14} strokeWidth={2} aria-hidden />
+      ) : (
+        <PriorityBars level={PRIORITY_LEVEL[priority]} />
+      )}
       {priority === 'P1' ? 'P1 · CRITICAL' : `${priority} · ${PRIORITY_LABEL[priority]}`}
     </span>
   );
@@ -53,7 +72,7 @@ export const STATUS_ICON = {
   CLASSIFIED: CircleDot,
   ASSIGNED: UserCheck,
   ACKNOWLEDGED: Eye,
-  IN_PROGRESS: Loader,
+  IN_PROGRESS: CirclePlay,
   PENDING_INFO: MessageCircleQuestion,
   RESOLVED: CircleCheck,
   VERIFIED: BadgeCheck,
@@ -65,13 +84,18 @@ export const STATUS_FILL = {
   waiting: 'bg-fill-waiting',
   done: 'bg-fill-done',
 };
+const SMALL_FILL = {
+  active: 'bg-primary-subtle text-primary-subtle-foreground',
+  waiting: 'bg-warning-subtle text-warning-foreground',
+  done: 'bg-muted text-muted-foreground',
+};
 export const STATUS_TEXT = {
   active: 'text-primary',
   waiting: 'text-warning-foreground',
   done: 'text-muted-foreground',
 };
 
-/** GitHub-shaped filled pill: cobalt while active, amber while waiting, slate when done. */
+/** Filled in the header; tinted in the activity and audit history. */
 export function StatusPill({
   status,
   duplicate = false,
@@ -82,9 +106,10 @@ export function StatusPill({
   small?: boolean;
 }) {
   const Icon = STATUS_ICON[status];
+  const group = statusGroup(status);
   return (
     <span
-      className={`${pill} ${STATUS_FILL[statusGroup(status)]} ${small ? 'h-5 px-2 text-2xs' : ''}`}
+      className={`${pill} ${small ? `h-5 px-2 text-2xs ${SMALL_FILL[group]}` : `h-6 px-2.5 text-xs ${STATUS_FILL[group]} text-fill-foreground`}`}
     >
       <Icon size={small ? 12 : 14} strokeWidth={2} aria-hidden />
       {duplicate && status === 'CLOSED' ? 'Closed as duplicate' : STATUS_LABEL[status]}
@@ -103,7 +128,7 @@ const SLA_STYLE = {
 export function SlaPill({ status }: { status: NonNullable<IncidentDetail['slaStatus']> }) {
   const [label, Icon, fill] = SLA_STYLE[status];
   return (
-    <span className={`${pill} ${fill}`}>
+    <span className={`${pill} h-6 px-2.5 text-xs ${fill} text-fill-foreground`}>
       <Icon size={14} strokeWidth={2} aria-hidden />
       {label}
     </span>

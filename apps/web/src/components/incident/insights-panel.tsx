@@ -6,15 +6,13 @@ import { clusterHeadline } from '@/lib/insights';
 import { formatScore } from '@/lib/staff';
 
 const small =
-  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50';
+  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50 max-sm:min-h-10';
 
-function Advisory({ source }: { source: IncidentInsights['source'] }) {
+export function Advisory({ source }: { source: IncidentInsights['source'] }) {
   return (
-    <p className="mb-2 flex items-center gap-1 text-2xs font-medium uppercase tracking-[0.04em] text-muted-foreground">
-      <Sparkles size={12} aria-hidden /> Suggestion · advisory
-      <span className="normal-case tracking-normal">
-        · {source === 'model' ? 'ML model' : 'rules'}
-      </span>
+    <p className="mb-2 flex items-center gap-1 text-2xs text-muted-foreground">
+      <Sparkles size={12} className="shrink-0" aria-hidden />
+      Advisory suggestion · {source === 'model' ? 'ML model' : 'rules'}
     </p>
   );
 }
@@ -73,6 +71,14 @@ export function RelatedPanel({
 }) {
   const mutation = useIncidentAction(detail.id);
   const canClose = detail.allowedActions.includes('closeAsDuplicate');
+  if (!insights.similar.length && !canClose)
+    return (
+      <section>
+        <h2 className="text-xs font-semibold text-muted-foreground">
+          Possibly related <span className="font-normal">· none found</span>
+        </h2>
+      </section>
+    );
   return (
     <section>
       <h2 className="mb-1 text-xs font-semibold text-muted-foreground">Possibly related</h2>
@@ -87,12 +93,15 @@ export function RelatedPanel({
                 <Link
                   to="/incidents/$incidentId"
                   params={{ incidentId: incident.id }}
-                  className="min-w-0 truncate text-sm font-medium hover:underline"
+                  className="text-sm font-medium tabular hover:underline"
                 >
-                  <span className="tabular">{incident.number}</span> · {incident.title}
+                  {incident.number}
                 </Link>
-                <span className="shrink-0 text-xs font-semibold tabular">{formatScore(score)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular">
+                  {formatScore(score)} match
+                </span>
               </div>
+              <p className="line-clamp-2 break-words text-sm">{incident.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{reasons.join(' · ')}</p>
               {canClose && (
                 <button

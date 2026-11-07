@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthService } from '../../application/auth/auth.service.js';
+import { IDENTITY_PROVIDER } from '../../application/auth/identity-provider.js';
+import { GoogleOidcProvider } from '../../infrastructure/auth/google-oidc.provider.js';
 import { ConfigModule, ENV } from '../../infrastructure/config/config.module.js';
 import type { Env } from '../../infrastructure/config/env.js';
 import { RepositoriesModule } from '../../infrastructure/db/repositories/repositories.module.js';
@@ -16,13 +18,19 @@ import {
   type UserRepository,
 } from '../../ports/index.js';
 import { AuthController } from './auth.controller.js';
+import { GoogleAuthController } from './google-auth.controller.js';
 import { AuthGuard, PermissionsGuard } from './guards.js';
 import { ItsmExceptionFilter } from './exception.filter.js';
 @Module({
   imports: [ConfigModule, RepositoriesModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }])],
-  controllers: [AuthController],
+  controllers: [AuthController, GoogleAuthController],
   exports: [TOKEN_SERVICE],
   providers: [
+    {
+      provide: IDENTITY_PROVIDER,
+      useFactory: (env: Env) => new GoogleOidcProvider(env),
+      inject: [ENV],
+    },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: TOKEN_SERVICE, useFactory: (env: Env) => new JoseTokenService(env), inject: [ENV] },
     {

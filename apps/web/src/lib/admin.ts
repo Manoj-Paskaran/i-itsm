@@ -59,9 +59,27 @@ export function strategyLabel(id: string) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function auditSearch(filters: { action?: string; from?: string; to?: string }) {
+/** Audit event names use sentence case while keeping SLA uppercase. */
+export function auditActionLabel(action: string) {
+  const words = action
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/\bsla\b/g, 'SLA');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export function auditSearch(filters: {
+  action?: string;
+  from?: string;
+  to?: string;
+  incidentId?: string;
+  actorId?: string;
+}) {
   const params = new URLSearchParams({ limit: '200' });
   if (filters.action) params.set('action', filters.action);
+  if (filters.incidentId) params.set('incidentId', filters.incidentId);
+  if (filters.actorId) params.set('actorId', filters.actorId);
   // The picker gives local calendar days; send the local day's start and end so the table's
   // local times line up with the filter.
   const day = /^\d{4}-\d{2}-\d{2}$/;

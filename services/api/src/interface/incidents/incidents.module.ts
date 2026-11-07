@@ -18,6 +18,7 @@ import { ConfigModule, ENV } from '../../infrastructure/config/config.module.js'
 import type { Env } from '../../infrastructure/config/env.js';
 import { RepositoriesModule } from '../../infrastructure/db/repositories/repositories.module.js';
 import { HttpIntelligenceAdapter } from '../../infrastructure/intelligence/http-intelligence-adapter.js';
+import { HttpCategorySuggester } from '../../infrastructure/intelligence/http-category-suggester.js';
 import {
   AUDIT_REPOSITORY,
   CATEGORY_REPOSITORY,
@@ -87,7 +88,14 @@ function nextAuditId() {
       useFactory: (registry: AssignmentStrategyRegistry) => new TechnicianAssigner(registry),
       inject: [AssignmentStrategyRegistry],
     },
-    { provide: CATEGORY_SUGGESTER, useClass: KeywordCategorySuggester },
+    {
+      provide: CATEGORY_SUGGESTER,
+      useFactory: (env: Env): CategorySuggester => {
+        const rules = new KeywordCategorySuggester();
+        return env.ML_SERVICE_URL ? new HttpCategorySuggester(env.ML_SERVICE_URL, rules) : rules;
+      },
+      inject: [ENV],
+    },
     {
       // Adapter + fallback: the ML service when configured, the domain rules whenever it fails.
       provide: INTELLIGENCE_PORT,

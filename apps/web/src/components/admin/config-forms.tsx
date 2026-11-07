@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAdminWrite } from '@/lib/admin';
 import {
   CATEGORY_CODE,
@@ -16,10 +16,10 @@ import {
 import { CRITICALITY_LABEL } from '@/lib/incidents';
 
 export const input =
-  'mt-1 block h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground';
+  'mt-1 block h-10 min-w-0 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50 sm:h-9';
 const label = 'block text-xs font-medium';
 export const smallButton =
-  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50';
+  'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-hover disabled:opacity-50 sm:h-7 sm:px-2.5';
 
 /** The shared inline panel: a heading, the fields, an error line, Cancel and Save. */
 function Panel({
@@ -39,28 +39,49 @@ function Panel({
   onCancel: () => void;
   submit?: string;
 }) {
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    form.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    form.current
+      ?.querySelector<HTMLElement>('input:enabled, select:enabled, textarea:enabled')
+      ?.focus({ preventScroll: true });
+  }, []);
   return (
     <form
+      ref={form}
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         onSubmit();
       }}
-      className="mb-4 space-y-3 rounded-lg border border-border bg-panel p-4"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !pending) {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      className="mb-4 scroll-mt-16 space-y-3 rounded-lg border border-border bg-panel p-4 lg:scroll-mt-4"
     >
       <h2 className="text-sm font-semibold">{title}</h2>
-      {children}
+      <fieldset disabled={pending} className="min-w-0 space-y-3">
+        {children}
+      </fieldset>
       {error && (
         <p role="alert" className="text-xs text-critical-foreground">
           {error}
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <button type="button" className="h-8 px-3 text-sm" onClick={onCancel}>
+        <button
+          type="button"
+          disabled={pending}
+          className="h-10 rounded-md px-3 text-sm hover:bg-hover disabled:opacity-50 sm:h-9"
+          onClick={onCancel}
+        >
           Cancel
         </button>
         <button
           disabled={pending}
-          className="h-8 rounded-md bg-primary px-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+          className="h-10 rounded-md bg-primary px-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50 sm:h-9"
         >
           {pending ? 'Saving…' : submit}
         </button>
@@ -349,7 +370,7 @@ export function ServiceForm({
           </select>
         </label>
         {service && (
-          <label className="mt-5 flex items-center gap-2 text-sm">
+          <label className="flex min-h-10 items-center gap-2 text-sm sm:mt-5 sm:min-h-9">
             <input
               type="checkbox"
               checked={active}
@@ -441,7 +462,7 @@ export function CategoryForm({
           />
         </label>
         {category && (
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-10 items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={active}
@@ -474,30 +495,36 @@ export function PolicyForm({
     targets: Targets;
   };
   services: { id: string; name: string }[];
-  /** For a new policy: the services that already have one, and whether a default exists. */
-  taken?: { serviceIds: string[]; hasDefault: boolean };
+  /** Occupied targets, excluding the policy being edited. */
+  taken: { serviceIds: string[]; hasDefault: boolean };
   onDone: () => void;
 }) {
   // One default policy and one policy per service: only offer targets that are still free.
-  const choices =
-    policy || !taken ? services : services.filter((sv) => !taken.serviceIds.includes(sv.id));
-  const offerDefault = !!policy || !taken?.hasDefault;
+  const isDefault = policy?.service === null;
+  const choices = isDefault ? [] : services.filter((sv) => !taken.serviceIds.includes(sv.id));
+  const offerDefault = isDefault || !taken.hasDefault;
   const [name, setName] = useState(policy?.name ?? '');
   const [serviceId, setServiceId] = useState<string>(
     policy ? (policy.service?.id ?? '') : offerDefault ? '' : (choices[0]?.id ?? ''),
   );
   const [warn, setWarn] = useState(String(Math.round((policy?.warningRatio ?? 0.75) * 100)));
-  const [targets, setTargets] = useState<Targets>(
-    policy?.targets ??
+  const [targets, setTargets] = useState(() =>
+    (
+      policy?.targets ??
       PRIORITIES.map((priority, i) => ({
         priority,
         responseMinutes: [5, 15, 60, 240][i]!,
         resolutionMinutes: [30, 120, 480, 1440][i]!,
-      })),
+      }))
+    ).map((t) => ({
+      ...t,
+      responseMinutes: String(t.responseMinutes),
+      resolutionMinutes: String(t.resolutionMinutes),
+    })),
   );
   const s = useSave(onDone);
   const setTarget = (p: string, key: 'responseMinutes' | 'resolutionMinutes', v: string) =>
-    setTargets((ts) => ts.map((t) => (t.priority === p ? { ...t, [key]: Number(v) } : t)));
+    setTargets((ts) => ts.map((t) => (t.priority === p ? { ...t, [key]: v } : t)));
   return (
     <Panel
       title={policy ? `Edit ${policy.name}` : 'Add an SLA policy'}
@@ -508,13 +535,18 @@ export function PolicyForm({
       onSubmit={() => {
         if (!name.trim()) return s.setError('Name the policy.');
         const ratio = Number(warn) / 100;
-        const problem = targetErrors(targets, ratio);
+        const numericTargets: Targets = targets.map((t) => ({
+          ...t,
+          responseMinutes: Number(t.responseMinutes),
+          resolutionMinutes: Number(t.resolutionMinutes),
+        }));
+        const problem = targetErrors(numericTargets, ratio);
         if (problem) return s.setError(problem);
         const body = {
           name: name.trim(),
           serviceId: serviceId || null,
           warningRatio: ratio,
-          targets,
+          targets: numericTargets,
         };
         if (policy) s.save(`/api/admin/sla-policies/${policy.id}`, 'PUT', body);
         else s.save('/api/admin/sla-policies', 'POST', body);
@@ -530,6 +562,8 @@ export function PolicyForm({
           <select
             className={input}
             value={serviceId}
+            disabled={isDefault}
+            aria-describedby={isDefault ? 'policy-target-help' : undefined}
             onChange={(e) => setServiceId(e.target.value)}
           >
             {offerDefault && (
@@ -541,6 +575,11 @@ export function PolicyForm({
               </option>
             ))}
           </select>
+          {isDefault && (
+            <span id="policy-target-help" className="text-xs font-normal text-muted-foreground">
+              The default policy must remain to cover services without their own policy.
+            </span>
+          )}
         </label>
         <label className={label}>
           Warn at (% of the window used)
@@ -554,24 +593,32 @@ export function PolicyForm({
           />
         </label>
       </div>
-      <table className="text-sm">
+      <table className="w-full table-fixed text-sm">
         <thead className="text-left text-xs text-muted-foreground">
           <tr>
-            <th className="pr-4 font-medium">Priority</th>
-            <th className="pr-4 font-medium">Respond within (min)</th>
-            <th className="font-medium">Resolve within (min)</th>
+            <th scope="col" className="w-14 pr-2 align-bottom font-medium">
+              Priority
+            </th>
+            <th scope="col" className="pr-2 align-bottom font-medium">
+              Respond within (min)
+            </th>
+            <th scope="col" className="align-bottom font-medium">
+              Resolve within (min)
+            </th>
           </tr>
         </thead>
         <tbody>
           {targets.map((t) => (
             <tr key={t.priority}>
-              <td className="pr-4 font-medium">{t.priority}</td>
-              <td className="pr-4">
+              <th scope="row" className="pr-2 text-left font-medium">
+                {t.priority}
+              </th>
+              <td className="pr-2">
                 <input
                   aria-label={`${t.priority} response minutes`}
                   type="number"
                   min={1}
-                  className={`${input} w-28 tabular`}
+                  className={`${input} tabular`}
                   value={t.responseMinutes}
                   onChange={(e) => setTarget(t.priority, 'responseMinutes', e.target.value)}
                 />
@@ -581,7 +628,7 @@ export function PolicyForm({
                   aria-label={`${t.priority} resolution minutes`}
                   type="number"
                   min={1}
-                  className={`${input} w-28 tabular`}
+                  className={`${input} tabular`}
                   value={t.resolutionMinutes}
                   onChange={(e) => setTarget(t.priority, 'resolutionMinutes', e.target.value)}
                 />
