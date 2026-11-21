@@ -3,6 +3,7 @@ import {
   type CreateIncidentRequest,
   type IncidentListQuery,
 } from '@itsm/contracts';
+import { Logger } from '@nestjs/common';
 import {
   AssignmentContext,
   TechnicianLoad,
@@ -44,6 +45,7 @@ import { IncidentViewMapper } from './incident-view-mapper.js';
 import { IncidentVisibility } from './incident-visibility.js';
 
 export class IncidentService {
+  private readonly logger = new Logger(IncidentService.name);
   private readonly mapper: IncidentViewMapper;
   // Demo-only explanations; the aggregate remains the sole persisted incident state.
   private readonly explanations = new Map<
@@ -130,10 +132,12 @@ export class IncidentService {
       },
       { ...identity, at: now, service: service ?? undefined, openIncidentsOfReporter: open },
     );
-    const { category } = await this.suggester.suggest(
-      `${cmd.title} ${cmd.description}`,
-      categories,
-    );
+    const intakeCategory = categories.find((category) => category.id() === cmd.categoryId);
+    const category =
+      intakeCategory ??
+      (await this.suggester.suggest(`${cmd.title} ${cmd.description}`, categories)).category;
+    if (intakeCategory)
+      this.logger.log(`category ${intakeCategory.toSnapshot().code} from chat intake`);
     const assessment = this.priorities
       .active()
       .assess(

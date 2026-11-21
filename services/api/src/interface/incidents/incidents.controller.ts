@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   AssignRequestSchema,
   AuditEntrySchema,
+  ChatIntakeRequestSchema,
+  ChatIntakeResponseSchema,
   CloseAsDuplicateRequestSchema,
   CreateIncidentRequestSchema,
   FeedbackRequestSchema,
@@ -21,6 +23,7 @@ import {
   SlaRiskEntrySchema,
   type IncidentDetail,
 } from '@itsm/contracts';
+import { ChatIntakeService } from '../../application/incidents/chat-intake.service.js';
 import { IncidentInsightsService } from '../../application/incidents/incident-insights.service.js';
 import { IncidentService } from '../../application/incidents/incident.service.js';
 import { InvalidInputException } from '../../domain/exceptions/index.js';
@@ -73,9 +76,17 @@ export class IncidentsController {
   constructor(
     private readonly incidents: IncidentService,
     private readonly insightsService: IncidentInsightsService,
+    private readonly chatIntake: ChatIntakeService,
   ) {}
   @Post() async report(@CurrentUser() u: User, @Body() b: unknown) {
     return detail(await this.incidents.report(u, parse(CreateIncidentRequestSchema, b)), u);
+  }
+  @Post('intake')
+  @HttpCode(200)
+  @RequirePermissions(P.INCIDENT_REPORT)
+  async intake(@Body() body: unknown) {
+    const { message } = parse(ChatIntakeRequestSchema, body);
+    return ChatIntakeResponseSchema.parse(await this.chatIntake.read(message));
   }
   /** Advisory "is this already reported?" check for the report form (IF-A). */
   @Post('similar') @HttpCode(200) async similar(@CurrentUser() u: User, @Body() b: unknown) {

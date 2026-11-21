@@ -66,14 +66,16 @@ export async function sendReport(page: Page) {
   const assigneeRow = page
     .locator('dl > div')
     .filter({ has: page.getByText('Who is on it', { exact: true }) });
-  const assignee = (await assigneeRow.locator('dd').innerText()).replace(/^[A-Z]{2}\s+/, '').trim();
+  const assignee = (await assigneeRow.locator('dd > div').innerText())
+    .replace(/^[A-Z]{2}\s+/, '')
+    .trim();
   expect(assignee).toMatch(/\S+ \S+/);
   expect(assignee).not.toBe('Waiting for assignment');
   const follow = page.getByRole('link', { name: 'Follow this incident', exact: true });
   const href = await follow.getAttribute('href');
   expect(href).toMatch(/^\/incidents\/[\w-]+$/);
-  await expect(page.getByText(/Response target\s+\d{2}:\d{2}/)).toBeVisible();
-  await expect(page.getByText(/Resolution target\s+\d{2}:\d{2}/)).toBeVisible();
+  await expect(page.getByText(/Respond by\s+.*\d{2}:\d{2}\s+·\s+in /)).toBeVisible();
+  await expect(page.getByText(/Resolve by\s+.*\d{2}:\d{2}\s+·\s+in /)).toBeVisible();
   const number = (await page.getByText(/INC\d+ ·/).innerText()).match(/INC\d+/)![0];
   return { path: href!, number, assignee, login: assignee.split(' ')[0]!.toLowerCase() };
 }

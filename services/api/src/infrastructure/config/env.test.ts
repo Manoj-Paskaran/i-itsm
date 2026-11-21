@@ -19,6 +19,7 @@ describe('loadEnv', () => {
       NOTIFICATIONS_EMAIL_ENABLED: true,
       WEB_ORIGIN: 'http://localhost:5173',
       GOOGLE_REDIRECT_URI: 'http://localhost:5173/api/auth/google/callback',
+      CHAT_INTAKE_TIMEOUT_MS: 15000,
     });
   });
   it('treatsBlankEmailSettingsAsUnset', () => {
@@ -27,6 +28,10 @@ describe('loadEnv', () => {
       EMAIL_ALLOWLIST: undefined,
       DEMO_EMAIL_OVERRIDE: undefined,
     });
+  });
+  it('acceptsAPositiveChatIntakeTimeoutInMilliseconds', () => {
+    expect(loadEnv({ CHAT_INTAKE_TIMEOUT_MS: '500' }).CHAT_INTAKE_TIMEOUT_MS).toBe(500);
+    expect(() => loadEnv({ CHAT_INTAKE_TIMEOUT_MS: '0' })).toThrow(/CHAT_INTAKE_TIMEOUT_MS/);
   });
   it('passesEmailSettingsToTheirConsumers', () => {
     const settings = {

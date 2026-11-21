@@ -2,9 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { AuditRecorder } from '../../application/audit/audit-recorder.js';
 import { InProcessEventPublisher } from '../../application/events/in-process-event-publisher.js';
+import { ChatIntakeService } from '../../application/incidents/chat-intake.service.js';
 import { IncidentInsightsService } from '../../application/incidents/incident-insights.service.js';
 import { IncidentViewMapper } from '../../application/incidents/incident-view-mapper.js';
 import { IncidentService } from '../../application/incidents/incident.service.js';
+import { RuleBasedChatIntake } from '../../application/incidents/rule-based-chat-intake.js';
 import { RuleBasedIntelligenceAdapter } from '../../application/incidents/rule-based-intelligence-adapter.js';
 import { KeywordCategorySuggester } from '../../application/incidents/keyword-category-suggester.js';
 import { AssignmentStrategyRegistry, TechnicianAssigner } from '../../domain/assignment/index.js';
@@ -19,10 +21,12 @@ import type { Env } from '../../infrastructure/config/env.js';
 import { RepositoriesModule } from '../../infrastructure/db/repositories/repositories.module.js';
 import { HttpIntelligenceAdapter } from '../../infrastructure/intelligence/http-intelligence-adapter.js';
 import { HttpCategorySuggester } from '../../infrastructure/intelligence/http-category-suggester.js';
+import { HttpChatIntakeAdapter } from '../../infrastructure/intelligence/http-chat-intake-adapter.js';
 import {
   AUDIT_REPOSITORY,
   CATEGORY_REPOSITORY,
   CATEGORY_SUGGESTER,
+  CHAT_INTAKE_PORT,
   INCIDENT_REPOSITORY,
   INTELLIGENCE_PORT,
   IT_SERVICE_REPOSITORY,
@@ -31,6 +35,7 @@ import {
   type AuditRepository,
   type CategoryRepository,
   type CategorySuggester,
+  type ChatIntakePort,
   type IncidentRepository,
   type IntelligencePort,
   type ItServiceRepository,
@@ -95,6 +100,25 @@ function nextAuditId() {
         return env.ML_SERVICE_URL ? new HttpCategorySuggester(env.ML_SERVICE_URL, rules) : rules;
       },
       inject: [ENV],
+    },
+    {
+      provide: CHAT_INTAKE_PORT,
+      useFactory: (env: Env): ChatIntakePort => {
+        const rules = new RuleBasedChatIntake();
+        return env.ML_SERVICE_URL
+          ? new HttpChatIntakeAdapter(env.ML_SERVICE_URL, env.CHAT_INTAKE_TIMEOUT_MS, rules)
+          : rules;
+      },
+      inject: [ENV],
+    },
+    {
+      provide: ChatIntakeService,
+      useFactory: (
+        services: ItServiceRepository,
+        categories: CategoryRepository,
+        reader: ChatIntakePort,
+      ) => new ChatIntakeService(services, categories, reader),
+      inject: [IT_SERVICE_REPOSITORY, CATEGORY_REPOSITORY, CHAT_INTAKE_PORT],
     },
     {
       // Adapter + fallback: the ML service when configured, the domain rules whenever it fails.

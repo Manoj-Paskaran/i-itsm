@@ -141,3 +141,27 @@ check with fictional inputs, run `uv run python scripts/smoke_gemini.py`. This r
 reports BLOCKED because GEMINI_API_KEY and GEMINI_MODEL are absent; mocked and
 fallback checks pass. API contract v1 now includes the additive engine fields.
 
+### Hybrid chat intake
+
+`POST /v1/chat-intake` reads the employee's first message with one structured
+Gemini call per attempt. The response includes a title, summary, reply, and
+optional field guesses with confidence. The guided chat handles follow-up questions.
+The reader tries the configured primary and fallback models within the Gemini
+timeout. The API waits up to `CHAT_INTAKE_TIMEOUT_MS` (default 15000).
+
+The cache replays the two demo readings even without a Gemini key. It resolves
+service names against the catalog supplied with each request. New successful
+Gemini readings stay in memory. `CHAT_INTAKE_REPLAY_MS` sets the base replay
+delay in milliseconds (1200 by default, 0 disables the delay and jitter).
+An uncached message returns empty fields and engine `rules` when Gemini is unavailable.
+
+The committed fixture contains hand-written placeholders. With `GEMINI_API_KEY`
+and `GEMINI_MODEL` set in your shell environment, run from `services/ml``:
+
+```sh
+uv run python scripts/capture_chat_intake_fixture.py
+```
+
+The script captures one live response for each demo message, records the model
+and capture date, and replaces the fixture after both calls succeed.
+

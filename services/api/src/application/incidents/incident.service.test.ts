@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AssignmentStrategyRegistry, TechnicianAssigner } from '../../domain/assignment/index.js';
 import { Category, ItService } from '../../domain/catalog/index.js';
 import {
@@ -100,22 +100,41 @@ async function setup(available = true) {
   let n = 0;
   events.subscribe(new AuditRecorder(audit, () => asAuditId(`audit-${++n}`)));
   const matrix = new MatrixPriorityStrategy();
+  const suggester = new KeywordCategorySuggester();
   const svc = new IncidentService(
     incidents,
     users,
     services,
     categories,
     policies,
-    new KeywordCategorySuggester(),
+    suggester,
     new PriorityStrategyRegistry([matrix], matrix.name),
     new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults()),
     events,
     clock,
     audit,
   );
-  return { svc, incidents, users, services, audit, tech, clock };
+  return { svc, incidents, users, services, categories, suggester, audit, tech, clock };
 }
 describe('IncidentService rules', () => {
+  it('usesTheChatIntakeCategoryWhenGiven', async () => {
+    const { svc, suggester } = await setup();
+    const suggest = vi.spyOn(suggester, 'suggest');
+    const result = await svc.report(employee, { ...cmd, categoryId: app.id() });
+    expect(result.category?.code).toBe('APPLICATION');
+    expect(suggest).not.toHaveBeenCalled();
+  });
+  it('ignoresAnInactiveChatIntakeCategory', async () => {
+    const { svc, categories } = await setup();
+    await categories.save(Category.create({ ...app.toSnapshot(), active: false }));
+    const result = await svc.report(employee, { ...cmd, categoryId: app.id() });
+    expect(result.category?.code).toBe('NETWORK');
+  });
+  it('ignoresAnUnknownChatIntakeCategory', async () => {
+    const { svc } = await setup();
+    const result = await svc.report(employee, { ...cmd, categoryId: 'missing' });
+    expect(result.category?.code).toBe('NETWORK');
+  });
   it('reportClassifiesPrioritisesAndAssignsInOneCall', async () => {
     const { svc, audit, services, users } = await setup();
     const payment = ItService.create({

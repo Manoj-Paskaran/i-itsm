@@ -18,9 +18,11 @@ test('workflow 3: detect duplicates, escalate through the demo chain, reassign a
   await fillReport(priya, 'Checkout shows payment error', outageDescription);
   const warning = priya.getByRole('region', { name: 'Is this already reported?' });
   await expect(warning.getByText(/These open incidents look similar/)).toBeVisible();
-  await expect(warning.getByRole('link', { name: new RegExp(original.number) })).toBeVisible();
+  await expect(
+    warning.getByRole('link', { name: new RegExp(`^${original.number} · `) }),
+  ).toBeVisible();
   await expect(warning).toContainText('same service');
-  await expect(warning).toContainText('Suggestion · advisory');
+  await expect(warning.getByText('Advisory', { exact: true })).toBeVisible();
   const duplicate = await sendReport(priya);
 
   // Script step 2 before step 3: watch the chip climb while the 20/40/60 s demo policy runs.

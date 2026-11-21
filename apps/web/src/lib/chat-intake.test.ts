@@ -1,10 +1,13 @@
+import type { ChatIntakeResponse } from '@itsm/contracts';
 import { describe, expect, it } from 'vitest';
 import { reportErrors } from './report';
 import {
+  applyReading,
+  chatCategoryId,
   matchService,
   parseAffectedUsers,
   parseLevel,
-  priorityPreview,
+  priorityPreviewRows,
   quickRepliesFor,
   replyTo,
   splitProblem,
@@ -31,6 +34,20 @@ const empty = {
 const say = (texts: string[]) =>
   texts.reduce((state, t) => replyTo(state, t, services), startIntake(empty));
 const problem = 'Card payments fail at checkout for every customer.';
+const reading: ChatIntakeResponse = {
+  engine: 'gemini',
+  model: 'gemini-test',
+  title: 'Card payments failing at checkout',
+  description: 'Customers cannot pay by card.',
+  reply: 'Sounds like card payments are failing at checkout.',
+  fields: {
+    serviceId: { value: 'pay', confidence: 0.96 },
+    categoryId: { value: 'application', confidence: 0.8 },
+    impact: { value: 4, confidence: 0.8 },
+    urgency: { value: 4, confidence: 0.7 },
+    affectedUsers: null,
+  },
+};
 /** Answers through the real step handlers, so the real keyword tables are what is tested. */
 const impactFor = (answer: string) => replyTo(say([problem, 'yes']), answer, services).form.impact;
 const urgencyFor = (answer: string) =>
@@ -88,6 +105,7 @@ describe('chat intake', () => {
     expect(quickRepliesFor(say(['Card payments fail at checkout today.']), services)[0]).toEqual({
       label: 'Yes, Payment Gateway',
       value: 'Payment Gateway',
+      suggested: true,
     }));
   it('asksToWaitWhileServicesLoad', () => {
     const start = replyTo(startIntake(empty), 'Card payments fail at checkout.', []);
@@ -120,8 +138,22 @@ describe('chat intake', () => {
   it('suggestsTheMatchedServiceAfterTheProblem', () => {
     const state = say(['Card payments fail at checkout for every customer.']);
     expect(state.step).toBe('service');
-    expect(state.messages.at(-1)?.text).toMatch(/sounds like Payment Gateway/);
+    expect(state.messages.at(-1)?.text).toBe('This sounds like Payment Gateway. Is that right?');
     expect(quickRepliesFor(state, services).map((r) => r.label)).toContain('Yes, Payment Gateway');
+  });
+  it('offersFullProblemExamplesThatSendTheirOwnTextAndMatchSeededServices', () => {
+    const examples = quickRepliesFor(startIntake(empty), services);
+    expect(examples.map(({ label }) => label)).toEqual([
+      "hey the card payment thing on the website isn't working, customers keep complaining they can't pay",
+      'My laptop screen flickers when I connect the office dock.',
+      'The VPN disconnects every few minutes when I work from home.',
+    ]);
+    expect(examples.map(({ value }) => matchService(value, services)?.id)).toEqual([
+      'pay',
+      'laptop',
+      'vpn',
+    ]);
+    expect(examples.every(({ label, value }) => label === value)).toBe(true);
   });
   it('fillsTheSameFormStateAsTheClassicForm', () => {
     const state = say([problem, 'Payment Gateway', '4', 'right now please', 'about 200']);
@@ -141,6 +173,37 @@ describe('chat intake', () => {
     const atUsers = say([problem, 'yes', '3', '3']);
     expect(replyTo(atUsers, '0', services).step).toBe('users');
     expect(replyTo(atUsers, '2000000', services).step).toBe('users');
+  });
+  it('confirmsTheServiceAndAcknowledgesTheImpactInPlainLanguage', () => {
+    const state = say([problem, 'yes', '3']);
+    expect(state.messages.at(-3)?.text).toBe('Payment Gateway it is. How badly is work affected?');
+    expect(state.messages.at(-1)?.text).toBe(
+      'Got it, important work is blocked. How soon does it need fixing?',
+    );
+  });
+  it.each([
+    ['1', 'Understood, it can wait until someone is free.'],
+    ['2', 'Understood, it needs fixing today.'],
+    ['3', 'Understood, it needs fixing within the next few hours.'],
+    ['4', 'Understood, it needs fixing right now.'],
+  ])('acknowledgesUrgencyLevel %s InPlainLanguage', (answer, acknowledgement) => {
+    expect(say([problem, 'yes', '3', answer]).messages.at(-1)?.text).toBe(
+      `${acknowledgement} About how many people are affected?`,
+    );
+  });
+  it.each([
+    ['just me', 'Just you, then.'],
+    ['5000', 'About 5,000 people, then.'],
+  ])('acknowledgesHeadCount %j AndPromptsForReviewInOneBotMessage', (answer, acknowledgement) => {
+    const state = say([problem, 'yes', '3', '2']);
+    const next = replyTo(state, answer, services);
+    expect(next.messages.slice(state.messages.length)).toEqual([
+      { from: 'user', text: answer },
+      {
+        from: 'bot',
+        text: `${acknowledgement} That’s everything I need.`,
+      },
+    ]);
   });
   it('ignoresRepliesOnceTheDraftIsReady', () => {
     const review = say([problem, 'yes', '3', '3', '200']);
@@ -162,10 +225,154 @@ describe('chat intake', () => {
     expect(state.step).toBe('service');
     expect(state.messages.at(-1)?.text).toMatch(/pick one below/);
   });
-  it('previewsWhatDecidesPriorityWithoutGuessingIt', () =>
+  it('showsOnlyServiceCriticalityInTheChatPriorityPreview', () => {
+    const { form } = say([problem, 'yes', '3', '2', 'just me']);
+    expect(priorityPreviewRows(form, services[2], 'chat')).toEqual([
+      { label: 'Service criticality', value: 'Mission-critical' },
+    ]);
+  });
+  it('omitsAnInvalidHeadCountFromTheFormPriorityPreview', () => {
+    const form = { ...empty, impact: 3, urgency: 2, affectedUsers: '' };
+    expect(priorityPreviewRows(form, services[2])?.map(({ label }) => label)).toEqual([
+      'Impact',
+      'Urgency',
+      'Service criticality',
+    ]);
+  });
+  it.each([
+    ['1', '1 (just you)'],
+    ['5000', '5,000 people'],
+  ])('showsAllFormPriorityFactorsAndFormatsHeadCountFor %s', (affectedUsers, wording) => {
     expect(
-      priorityPreview({ ...empty, impact: 4, urgency: 3, affectedUsers: '200' }, services[2]),
-    ).toBe(
-      'Impact Critical × urgency High on a Mission-critical service, 200 people affected. We set the exact priority and SLA when you send it.',
-    ));
+      priorityPreviewRows({ ...empty, impact: 4, urgency: 3, affectedUsers }, services[2]),
+    ).toEqual([
+      { label: 'Impact', value: 'Critical' },
+      { label: 'Urgency', value: 'High' },
+      { label: 'Service criticality', value: 'Mission-critical' },
+      { label: 'People affected', value: wording },
+    ]);
+  });
+});
+
+describe('first-message reading', () => {
+  it('sendsTheChatCategoryOnlyForTheServiceAndTextTheReadingSaw', () => {
+    const state = applyReading(startIntake(empty), problem, reading, services);
+    expect(chatCategoryId(state.form)).toBe('application');
+    expect(chatCategoryId({ ...state.form, serviceId: 'laptop' })).toBeUndefined();
+    expect(
+      chatCategoryId({ ...state.form, description: 'My laptop screen flickers on the dock.' }),
+    ).toBeUndefined();
+  });
+
+  it('dropsTheReadingsSuggestionOnceTheFormAnswersIt', () => {
+    const state = applyReading(startIntake(empty), problem, reading, services);
+    expect(state.step).toBe('urgency');
+    const edited = { ...state, form: { ...state.form, urgency: 1 } };
+    expect(quickRepliesFor(edited, services).some((reply) => reply.suggested)).toBe(false);
+    expect(replyTo(edited, 'yes', services).form.urgency).toBe(1);
+  });
+
+  it('skipsQuestionsGeminiAnswered', () => {
+    const state = applyReading(startIntake(empty), problem, reading, services);
+    expect(state.step).toBe('urgency');
+    expect(state.form).toMatchObject({
+      title: reading.title,
+      description: reading.description,
+      categoryId: 'application',
+      serviceId: 'pay',
+      impact: 4,
+      urgency: null,
+    });
+    const allButUrgency = {
+      ...reading,
+      fields: { ...reading.fields, affectedUsers: { value: 2000, confidence: 0.8 } },
+    };
+    const next = applyReading(startIntake(empty), problem, allButUrgency, services);
+    const review = replyTo(next, '4', services);
+    expect(review.step).toBe('review');
+    expect(review.form.affectedUsers).toBe('2000');
+    expect(review.messages.at(-1)?.text).toContain('That’s everything I need.');
+  });
+
+  it('confirmsAMediumConfidenceGuessWithASuggestedChip', () => {
+    const medium = {
+      ...reading,
+      fields: {
+        ...reading.fields,
+        serviceId: { value: 'pay', confidence: 0.5 },
+        impact: { value: 3, confidence: 0.6 },
+        affectedUsers: { value: 35, confidence: 0.7 },
+      },
+    };
+    let state = applyReading(startIntake(empty), problem, medium, services);
+    for (const [step, label, question, answer] of [
+      [
+        'service',
+        'Yes, Payment Gateway',
+        'This sounds like Payment Gateway. Is that right?',
+        'yes',
+      ],
+      [
+        'impact',
+        'Important work is blocked',
+        'It sounds like important work is blocked. Is that right?',
+        '2',
+      ],
+      ['urgency', 'Right now', 'It sounds like it needs fixing right now. Is that right?', '4'],
+      ['users', '35 people', 'It sounds like this affects 35 people. Is that right?', '35'],
+    ]) {
+      expect(state.step).toBe(step);
+      expect(state.messages.at(-1)?.text).toContain(question);
+      expect(quickRepliesFor(state, services)[0]).toMatchObject({ label, suggested: true });
+      state = replyTo(state, answer!, services);
+    }
+    expect(state.form).toMatchObject({
+      serviceId: 'pay',
+      impact: 2,
+      urgency: 4,
+      affectedUsers: '35',
+    });
+  });
+
+  it('asksNormallyWhenConfidenceIsLow', () => {
+    const low = {
+      ...reading,
+      fields: {
+        ...reading.fields,
+        serviceId: { value: 'pay', confidence: 0.49 },
+        impact: { value: 4, confidence: 0.49 },
+        urgency: null,
+      },
+    };
+    let state = applyReading(startIntake(empty), problem, low, services);
+    expect(state.messages.at(-1)?.text).toContain('Which service is affected?');
+    expect(quickRepliesFor(state, services).some(({ suggested }) => suggested)).toBe(false);
+    state = replyTo(state, 'Payment Gateway', services);
+    expect(state.messages.at(-1)?.text).toContain('How badly is work affected?');
+    state = replyTo(state, '2', services);
+    expect(state.messages.at(-1)?.text).toContain('How soon does it need fixing?');
+  });
+
+  it('acceptsAnExplicitUrgencyAnswerOverTheSuggestion', () => {
+    const draft = applyReading(
+      startIntake(empty),
+      problem,
+      {
+        ...reading,
+        fields: { ...reading.fields, urgency: { value: 2, confidence: 0.7 } },
+      },
+      services,
+    );
+    expect(replyTo(draft, 'right now', services).form.urgency).toBe(4);
+    expect(replyTo(draft, 'Yes.', services).form.urgency).toBe(2);
+  });
+
+  it('rulesReadingKeepsTheRuleBasedFlow', () => {
+    const state = startIntake(empty);
+    const expected = replyTo(state, problem, services);
+    expect(applyReading(state, problem, { ...reading, engine: 'rules' }, services)).toEqual(
+      expected,
+    );
+    expect(applyReading(state, problem, { ...reading, title: null }, services)).toEqual(expected);
+  });
 });

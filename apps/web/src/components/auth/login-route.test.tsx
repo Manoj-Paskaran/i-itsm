@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Route } from '@/routes/login';
 
@@ -7,7 +7,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   useNavigate: () => vi.fn(),
 }));
-vi.mock('@/lib/auth', () => ({ useAuth: () => ({ status: 'anonymous' }) }));
+const login = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ status: 'anonymous', login }) }));
 const Login = Route.options.component!;
 beforeEach(() => {
   vi.spyOn(Route, 'useSearch').mockReturnValue({});
@@ -65,4 +66,16 @@ it.each([
   renderLogin();
   expect(screen.getByRole('alert').textContent).toMatch(/Google|account is inactive/);
   expect(screen.getByRole('alert').textContent).not.toContain(error);
+});
+it('demoAccountCardSignsInWithOneClick', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ google: false })));
+  renderLogin();
+  fireEvent.click(screen.getByRole('button', { name: /Vikram\s*IT manager/ }));
+  await waitFor(() => expect(login).toHaveBeenCalledWith('vikram@itsm.demo', 'demo1234'));
+});
+it('demoAccountsCoverEveryDemoScriptRole', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ google: false })));
+  renderLogin();
+  for (const person of ['Priya', 'Farah', 'Divya', 'Vikram', 'Arjun'])
+    expect(screen.getByRole('button', { name: new RegExp(person) })).toBeTruthy();
 });

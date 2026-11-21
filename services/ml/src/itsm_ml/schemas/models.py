@@ -81,6 +81,38 @@ class Service(ContractModel):
     name: Text
 
 
+class ChatIntakeRequest(ContractModel):
+    message: Annotated[Text, Field(max_length=2000)]
+    services: list[Service]
+    categories: list[Text] | None = None
+
+
+class ChatIntakeGuess[T](ContractModel):
+    value: T
+    confidence: Annotated[Score, Field(strict=True)]
+
+
+AffectedUserCount = Annotated[int, Field(ge=1, le=1_000_000, strict=True)]
+ChatIntakeEngine = Literal["gemini", "cache", "rules"]
+
+
+class ChatIntakeFields(ContractModel):
+    service_id: ChatIntakeGuess[Text] | None = None
+    category_code: ChatIntakeGuess[Text] | None = None
+    impact: ChatIntakeGuess[Severity] | None = None
+    urgency: ChatIntakeGuess[Severity] | None = None
+    affected_users: ChatIntakeGuess[AffectedUserCount] | None = None
+
+
+class ChatIntakeResponse(ContractModel):
+    engine: ChatIntakeEngine
+    model: str | None = None
+    reply: str | None = None
+    title: str | None = None
+    summary: str | None = None
+    fields: ChatIntakeFields = Field(default_factory=ChatIntakeFields)
+
+
 class IntakeRequest(ContractModel):
     messages: Annotated[list[Message], Field(min_length=1)]
     services: list[Service]

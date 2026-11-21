@@ -28,7 +28,9 @@ describe('incident requests', () => {
       affectedUsers: 100,
     };
     expect(CreateIncidentRequestSchema.safeParse(report).success).toBe(true);
+    expect(CreateIncidentRequestSchema.safeParse({ ...report, categoryId: id }).success).toBe(true);
     for (const invalid of [
+      { categoryId: 'application' },
       { title: 'no' },
       { description: 'short' },
       { serviceId: 'bad' },

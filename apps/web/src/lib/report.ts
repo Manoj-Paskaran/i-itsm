@@ -19,6 +19,10 @@ export interface ReportForm {
   title: string;
   description: string;
   serviceId: string;
+  /** Category the chat's first-message reading chose (AI-1); see `chatCategoryId`. */
+  categoryId?: string;
+  /** What the reading saw when it chose the category: the service it proposed and the text. */
+  categoryBasis?: { serviceId: string; title: string; description: string };
   impact: number | null;
   urgency: number | null;
   affectedUsers: string;

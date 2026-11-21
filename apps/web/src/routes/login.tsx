@@ -13,6 +13,18 @@ const googleErrors: Record<string, string> = {
   google_failed: 'Google sign-in failed. Try again or use your email and password.',
   account_inactive: 'Your account is inactive. Please contact your IT administrator.',
 };
+const DEMO_PASSWORD = 'demo1234';
+/** The people the demo script switches between (seeded by the API's demo seed). */
+const DEMO_ACCOUNTS = [
+  ['priya', 'Employee'],
+  ['rahul', 'Employee'],
+  ['farah', 'Technician'],
+  ['asha', 'Technician'],
+  ['ben', 'Technician'],
+  ['divya', 'Team lead'],
+  ['vikram', 'IT manager'],
+  ['arjun', 'Admin'],
+] as const;
 export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): { redirect?: string; error?: string } => ({
     redirect:
@@ -42,12 +54,13 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [demoTarget, setDemoTarget] = useState<string>();
   const [mode, setMode] = useState<'signin' | 'register'>('signin');
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
   const displayError =
     error || (signInError && (googleErrors[signInError] ?? googleErrors.google_failed));
-  if (auth.status === 'authenticated') return <Navigate to={redirect || '/'} />;
+  if (auth.status === 'authenticated') return <Navigate to={demoTarget ?? (redirect || '/')} />;
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
@@ -72,6 +85,25 @@ function Login() {
             ? 'Sign up failed'
             : 'Sign in failed',
       );
+    } finally {
+      setPending(false);
+    }
+  }
+  /** One click signs in as a demo person, so the demo can switch people in one browser. */
+  async function signInAs(name: string) {
+    if (pending) return;
+    const demoEmail = `${name}@itsm.demo`;
+    setMode('signin');
+    setEmail(demoEmail);
+    setPassword(DEMO_PASSWORD);
+    setPending(true);
+    setError('');
+    // Stay on the incident being shown; other pages may belong to another role, so go home.
+    setDemoTarget(redirect?.startsWith('/incidents/') ? redirect : '/');
+    try {
+      await auth.login(demoEmail, DEMO_PASSWORD);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed');
     } finally {
       setPending(false);
     }
@@ -194,36 +226,21 @@ function Login() {
         </form>
         <section aria-label="Demo accounts" className="mt-5 text-xs text-muted-foreground">
           <h2 className="font-semibold text-foreground">Try a demo account</h2>
-          <p className="mt-1">Choose a person to fill in their details, then sign in.</p>
+          <p className="mt-1">
+            Choose a person to sign in as them. Sign out from the sidebar to switch.
+          </p>
           <p className="mt-1">
             Demo password: <span className="font-medium text-foreground">demo1234</span>
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            {(
-              [
-                ['asha', 'Technician'],
-                ['ben', 'Technician'],
-                ['farah', 'Technician'],
-                ['priya', 'Employee'],
-                ['rahul', 'Employee'],
-                ['chen', 'Team lead'],
-                ['arjun', 'Admin'],
-                ['kavya', 'IT manager'],
-              ] as const
-            ).map(([name, role]) => (
+            {DEMO_ACCOUNTS.map(([name, role]) => (
               <button
                 key={name}
                 type="button"
                 disabled={pending}
-                aria-pressed={email === `${name}@itsm.demo`}
-                className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-left hover:bg-hover aria-pressed:border-border-strong aria-pressed:bg-muted disabled:opacity-50"
-                onClick={() => {
-                  // A demo account always signs in, even from the register form.
-                  setMode('signin');
-                  setError('');
-                  setEmail(`${name}@itsm.demo`);
-                  setPassword('demo1234');
-                }}
+                aria-busy={pending && email === `${name}@itsm.demo`}
+                className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-left hover:bg-hover aria-busy:border-border-strong aria-busy:bg-muted disabled:opacity-50"
+                onClick={() => void signInAs(name)}
               >
                 <span>
                   <span className="block text-sm font-medium text-foreground">

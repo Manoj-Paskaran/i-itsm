@@ -32,7 +32,7 @@ const EnvSchema = z.object({
     (value) => (value === '' ? undefined : value),
     z.string().optional(),
   ),
-  // Only the seed script interprets and validates this mapping.
+  // The seed applies this mapping; password login also accepts the seeded address as an alias.
   DEMO_EMAIL_OVERRIDE: z.preprocess(
     (value) => (value === '' ? undefined : value),
     z.string().optional(),
@@ -53,6 +53,7 @@ const EnvSchema = z.object({
   ),
   /** Python intelligence service; unset or unreachable means the rule-based fallback is used. */
   ML_SERVICE_URL: z.preprocess((value) => (value === '' ? undefined : value), z.url().optional()),
+  CHAT_INTAKE_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 });
 
 export type Env = Omit<z.infer<typeof EnvSchema>, 'JWT_SECRET' | 'ESCALATION_POLICY'> & {

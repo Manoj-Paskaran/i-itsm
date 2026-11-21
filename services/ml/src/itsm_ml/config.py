@@ -28,3 +28,8 @@ class Settings(BaseSettings):
     gemini_retries: int = Field(default=2, ge=0, le=5)
     gemini_backoff_seconds: float = Field(default=0.25, ge=0)
     ai_cache_size: int = Field(default=128, ge=1, le=4096)
+    chat_intake_replay_ms: int = Field(default=1200, ge=0)
+    # Kept below the API's CHAT_INTAKE_TIMEOUT_MS (15 s) so the API never gives up first.
+    # False skips the seeded fixture, e.g. to try a live Gemini call on the demo message.
+    chat_intake_use_fixture: bool = True
+    chat_intake_timeout_seconds: float = Field(default=10, gt=0)

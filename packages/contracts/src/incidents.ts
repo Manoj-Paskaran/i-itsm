@@ -42,6 +42,8 @@ export const CreateIncidentRequestSchema = z.object({
   impact: level,
   urgency: level,
   affectedUsers: z.number().int().min(1).max(1_000_000),
+  /** Category suggested by the chat intake (AI-1); without it the API's classifier decides. */
+  categoryId: z.uuid().optional(),
 });
 export const IncidentSummarySchema = z.object({
   id: z.uuid(),

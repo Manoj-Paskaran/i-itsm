@@ -3,11 +3,14 @@ from fastapi import APIRouter, HTTPException, Request
 from itsm_ml.classifiers.category import ClassifierChain
 from itsm_ml.embeddings.embedder import normalise
 from itsm_ml.embeddings.provider import get_embedder
+from itsm_ml.genai.chat_intake import FirstMessageReader
 from itsm_ml.genai.gateway import ResilientGateway
 from itsm_ml.genai.intake import IntakeAgent
 from itsm_ml.genai.report import ReportAgent
 from itsm_ml.risk.estimator import RiskEstimatorChain
 from itsm_ml.schemas.models import (
+    ChatIntakeRequest,
+    ChatIntakeResponse,
     ClassifyRequest,
     EmbedRequest,
     EmbedResponse,
@@ -59,6 +62,12 @@ async def intake(request: IntakeRequest, http: Request) -> IntakeResponse:
         [lambda a=a: a.intake(request) for a in agents],  # type: ignore[misc]
         lambda: fallback.intake(request),
     )
+
+
+@router.post("/chat-intake", response_model=ChatIntakeResponse)
+async def chat_intake(request: ChatIntakeRequest, http: Request) -> ChatIntakeResponse:
+    reader: FirstMessageReader = http.app.state.chat_intake_reader
+    return await reader.read(request)
 
 
 @router.post("/post-incident-report", response_model=ReportResponse)

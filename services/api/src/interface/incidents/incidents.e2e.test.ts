@@ -2,7 +2,11 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
-import { IncidentDetailSchema, OverviewReportSchema } from '@itsm/contracts';
+import {
+  ChatIntakeResponseSchema,
+  IncidentDetailSchema,
+  OverviewReportSchema,
+} from '@itsm/contracts';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../../app.module.js';
@@ -26,6 +30,7 @@ import {
   Technician,
 } from '../../domain/users/index.js';
 import { JoseTokenService } from '../../infrastructure/auth/token.service.js';
+import { ENV } from '../../infrastructure/config/config.module.js';
 import { loadEnv } from '../../infrastructure/config/env.js';
 import {
   REPORT_QUERIES,
@@ -124,6 +129,8 @@ describe('incident HTTP', () => {
       SlaPolicy.specDefault(asSlaPolicyId('00000000-0000-4000-8000-000000000007')),
     );
     const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(ENV)
+      .useValue(loadEnv({ ...process.env, ML_SERVICE_URL: undefined }))
       .overrideProvider(REPORT_QUERIES)
       .useValue(new InMemoryReportQueries([], [], []))
       .overrideProvider(NOTIFICATION_REPOSITORY)
@@ -153,6 +160,28 @@ describe('incident HTTP', () => {
   });
   afterEach(async () => {
     await app?.close();
+  });
+  it('employeeCanReadChatIntakeWithoutAnMlUrl', async () => {
+    const response = await request(server())
+      .post('/api/incidents/intake')
+      .set('Authorization', auth(employeeToken))
+      .send({ message: 'WiFi will not connect' })
+      .expect(200);
+    expect(ChatIntakeResponseSchema.parse(response.body).engine).toBe('rules');
+  });
+  it('chatIntakeRequiresIncidentReportPermission', async () => {
+    await request(server())
+      .post('/api/incidents/intake')
+      .set('Authorization', auth(techToken))
+      .send({ message: 'WiFi will not connect' })
+      .expect(403);
+  });
+  it('chatIntakeRejectsMessagesBelowTheContractMinimum', async () => {
+    await request(server())
+      .post('/api/incidents/intake')
+      .set('Authorization', auth(employeeToken))
+      .send({ message: '  x  ' })
+      .expect(400);
   });
   it('managerGetsOverview', async () => {
     const response = await request(server())

@@ -1,27 +1,36 @@
-import type { ServiceSummary } from '@itsm/contracts';
+import type { ChatIntakeResponse, IntakeEngine, ServiceSummary } from '@itsm/contracts';
 import { CRITICALITY_LABEL, LEVEL_LABEL } from './incidents';
-import { IMPACT_OPTIONS, URGENCY_OPTIONS, type ReportForm } from './report';
+import { IMPACT_OPTIONS, reportErrors, URGENCY_OPTIONS, type ReportForm } from './report';
 
 /**
- * INV-3: a rule-based guided chat that fills the same ReportForm as the classic form.
+ * AI-1 / INV-3: a first-message reading can prefill the guided chat's report.
  * Each step is a small handler (State pattern): it asks one question, parses the reply with
- * explainable keyword rules, and either moves on or asks again. No AI is involved.
+ * explainable keyword rules, and either moves on or asks again.
  */
 export type IntakeStep = 'problem' | 'service' | 'impact' | 'urgency' | 'users' | 'review';
 export interface ChatMessage {
   readonly from: 'bot' | 'user';
   readonly text: string;
+  readonly source?: IntakeEngine;
 }
 export interface QuickReply {
   readonly label: string;
   /** Text sent as the user's reply when the chip is clicked. */
   readonly value: string;
+  readonly suggested?: boolean;
 }
 export interface IntakeState {
   readonly step: IntakeStep;
   readonly form: ReportForm;
   readonly messages: readonly ChatMessage[];
+  readonly suggestions?: Partial<
+    Pick<ReportForm, 'serviceId' | 'impact' | 'urgency' | 'affectedUsers'>
+  >;
 }
+export const SKIP_CONFIDENCE = 0.8;
+export const CONFIRM_CONFIDENCE = 0.5;
+export const PAYMENT_EXAMPLE =
+  "hey the card payment thing on the website isn't working, customers keep complaining they can't pay";
 interface StepResult {
   readonly patch?: Partial<ReportForm>;
   /** Set when the reply could not be understood: the bot says this and stays on the step. */
@@ -30,10 +39,10 @@ interface StepResult {
   readonly ack?: string;
 }
 interface StepHandler {
-  readonly next: IntakeStep;
-  ask(form: ReportForm, services: readonly ServiceSummary[]): string;
-  quickReplies(services: readonly ServiceSummary[], form: ReportForm): QuickReply[];
-  parse(text: string, services: readonly ServiceSummary[], form: ReportForm): StepResult;
+  readonly next: Exclude<IntakeStep, 'problem'>;
+  ask(state: IntakeState, services: readonly ServiceSummary[]): string;
+  quickReplies(services: readonly ServiceSummary[], state: IntakeState): QuickReply[];
+  parse(text: string, services: readonly ServiceSummary[], state: IntakeState): StepResult;
 }
 
 /** Everyday words people use for each service, keyed by a word in the service name. */
@@ -128,14 +137,39 @@ export function splitProblem(text: string) {
 
 const levelReplies = (options: readonly { value: number; label: string }[]) =>
   options.map((o) => ({ label: o.label, value: String(o.value) }));
-const optionLabel = (options: readonly { value: number; label: string }[], v: number) =>
-  options.find((o) => o.value === v)?.label ?? String(v);
+
+const IMPACT_ACK: Record<number, string> = {
+  1: 'Got it, you can still work normally.',
+  2: 'Got it, some work is slowed down.',
+  3: 'Got it, important work is blocked.',
+  4: 'I see, the business has stopped.',
+};
+const URGENCY_ACK: Record<number, string> = {
+  1: 'Understood, it can wait until someone is free.',
+  2: 'Understood, it needs fixing today.',
+  3: 'Understood, it needs fixing within the next few hours.',
+  4: 'Understood, it needs fixing right now.',
+};
+
+function suggestedService(state: IntakeState, services: readonly ServiceSummary[]) {
+  return state.suggestions
+    ? services.find((service) => service.id === state.suggestions?.serviceId)
+    : matchService(state.form.description, services);
+}
+
+const affirmative = /^\s*(yes|yeah|yep|correct|right|that'?s right)\b/i;
+const confirmsSuggestion = /^(yes|yeah|yep|correct|right|that'?s right)[.!]?$/;
 
 const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
   problem: {
     next: 'service',
     ask: () => "Hi! What's going wrong? Describe it in a sentence or two.",
-    quickReplies: () => [],
+    quickReplies: () =>
+      [
+        PAYMENT_EXAMPLE,
+        'My laptop screen flickers when I connect the office dock.',
+        'The VPN disconnects every few minutes when I work from home.',
+      ].map((example) => ({ label: example, value: example })),
     parse(text) {
       const { title, description } = splitProblem(text);
       if (title.length < 3 || description.length < 10)
@@ -145,26 +179,24 @@ const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
   },
   service: {
     next: 'impact',
-    ask: (form, services) => {
-      const guess = matchService(form.description, services);
+    ask: (state, services) => {
+      const guess = suggestedService(state, services);
       return guess
-        ? `It sounds like ${guess.name}. Is that right? Pick it or choose another service.`
+        ? `This sounds like ${guess.name}. Is that right?`
         : 'Which service is affected?';
     },
-    quickReplies: (services, form) => {
-      const guess = matchService(form.description, services);
+    quickReplies: (services, state) => {
+      const guess = suggestedService(state, services);
       return [
-        ...(guess ? [{ label: `Yes, ${guess.name}`, value: guess.name }] : []),
+        ...(guess ? [{ label: `Yes, ${guess.name}`, value: guess.name, suggested: true }] : []),
         ...services.filter((s) => s !== guess).map((s) => ({ label: s.name, value: s.name })),
       ];
     },
-    parse(text, services, form) {
+    parse(text, services, state) {
       if (!services.length)
         return { retry: 'The list of services is still loading. Please try again in a moment.' };
       const exact = services.find((s) => s.name.toLowerCase() === text.trim().toLowerCase());
-      const confirmed = /^\s*(yes|yeah|yep|correct|right|that'?s right)\b/i.test(text)
-        ? matchService(form.description, services)
-        : null;
+      const confirmed = affirmative.test(text) ? suggestedService(state, services) : null;
       const service = exact ?? confirmed ?? matchService(text, services);
       return service
         ? { patch: { serviceId: service.id }, ack: `${service.name} it is.` }
@@ -173,27 +205,42 @@ const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
   },
   impact: {
     next: 'urgency',
-    ask: () => 'How badly is work affected?',
+    ask: ({ suggestions }) => {
+      const option = IMPACT_OPTIONS.find(({ value }) => value === suggestions?.impact);
+      return option
+        ? `It sounds like ${option.label.toLowerCase()}. Is that right?`
+        : 'How badly is work affected?';
+    },
     quickReplies: () => levelReplies(IMPACT_OPTIONS),
     parse(text) {
       const impact = parseLevel(text, IMPACT_WORDS, 2);
       return impact
-        ? { patch: { impact }, ack: `Noted: ${optionLabel(IMPACT_OPTIONS, impact).toLowerCase()}.` }
+        ? { patch: { impact }, ack: IMPACT_ACK[impact] }
         : { retry: 'Please pick the option that fits best.' };
     },
   },
   urgency: {
     next: 'users',
-    ask: () => 'How soon does it need fixing?',
+    ask: ({ suggestions }) => {
+      const option = URGENCY_OPTIONS.find(({ value }) => value === suggestions?.urgency);
+      return option
+        ? `It sounds like it needs fixing ${option.label.toLowerCase()}. Is that right?`
+        : 'How soon does it need fixing?';
+    },
     quickReplies: () => levelReplies(URGENCY_OPTIONS),
     parse(text) {
       const urgency = parseLevel(text, URGENCY_WORDS);
-      return urgency ? { patch: { urgency } } : { retry: 'Please pick the option that fits best.' };
+      return urgency
+        ? { patch: { urgency }, ack: URGENCY_ACK[urgency] }
+        : { retry: 'Please pick the option that fits best.' };
     },
   },
   users: {
     next: 'review',
-    ask: () => 'About how many people are affected?',
+    ask: ({ suggestions }) =>
+      suggestions?.affectedUsers
+        ? `It sounds like this affects ${formatPeopleAffected(Number(suggestions.affectedUsers))}. Is that right?`
+        : 'About how many people are affected?',
     quickReplies: () => [
       { label: 'Just me', value: 'just me' },
       { label: 'My team', value: 'my team' },
@@ -205,7 +252,10 @@ const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
       return users && users >= 1 && users <= 1_000_000
         ? {
             patch: { affectedUsers: String(users) },
-            ack: `Noted: about ${users.toLocaleString('en-IN')} ${users === 1 ? 'person' : 'people'}.`,
+            ack:
+              users === 1
+                ? 'Just you, then.'
+                : `About ${users.toLocaleString('en-IN')} people, then.`,
           }
         : { retry: 'Please give a number, like 5 or 200.' };
     },
@@ -213,7 +263,122 @@ const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
 };
 
 export function startIntake(form: ReportForm): IntakeState {
-  return { step: 'problem', form, messages: [{ from: 'bot', text: STEPS.problem.ask(form, []) }] };
+  const state: IntakeState = { step: 'problem', form, messages: [] };
+  return { ...state, messages: [{ from: 'bot', text: STEPS.problem.ask(state, []) }] };
+}
+
+const FIELDS_BY_STEP = {
+  service: 'serviceId',
+  impact: 'impact',
+  urgency: 'urgency',
+  users: 'affectedUsers',
+} as const;
+
+function nextQuestion(
+  state: IntakeState,
+  step: StepHandler['next'],
+  services: readonly ServiceSummary[],
+  ack?: string,
+  source?: IntakeEngine,
+): IntakeState {
+  if (state.suggestions) {
+    while (step !== 'review' && state.form[FIELDS_BY_STEP[step]]) {
+      step = STEPS[step].next;
+    }
+  }
+  const question =
+    step === 'review' ? 'That’s everything I need.' : STEPS[step].ask(state, services);
+  const text = ack ? `${ack} ${question}` : question;
+  return {
+    ...state,
+    step,
+    messages: [...state.messages, { from: 'bot', text, ...(source && { source }) }],
+  };
+}
+
+type Guess<T> = { value: T; confidence: number } | null;
+const high = <T>(guess: Guess<T>) =>
+  guess && guess.confidence >= SKIP_CONFIDENCE ? guess.value : undefined;
+const medium = <T>(guess: Guess<T>) =>
+  guess && guess.confidence >= CONFIRM_CONFIDENCE && guess.confidence < SKIP_CONFIDENCE
+    ? guess.value
+    : undefined;
+
+/** Uses the first-message reading, leaving uncertain answers to the guided steps. */
+export function applyReading(
+  state: IntakeState,
+  message: string,
+  reading: ChatIntakeResponse | null,
+  services: readonly ServiceSummary[],
+): IntakeState {
+  if (state.step !== 'problem' || !message.trim()) return state;
+  if (!reading?.title?.trim() || reading.engine === 'rules')
+    return replyTo(state, message, services);
+  const { serviceId, categoryId, impact, urgency, affectedUsers } = reading.fields;
+  const users = high(affectedUsers);
+  const suggestedUsers = medium(affectedUsers);
+  const form: ReportForm = {
+    ...state.form,
+    title: reading.title,
+    description: reading.description ?? splitProblem(message).description,
+    categoryId: categoryId?.value,
+    categoryBasis: {
+      serviceId: serviceId && serviceId.confidence >= CONFIRM_CONFIDENCE ? serviceId.value : '',
+      title: reading.title,
+      description: reading.description ?? splitProblem(message).description,
+    },
+    serviceId: high(serviceId) ?? state.form.serviceId,
+    impact: high(impact) ?? state.form.impact,
+    urgency: high(urgency) ?? state.form.urgency,
+    // The classic form starts at one person, which isn't an answer from the reporter.
+    affectedUsers:
+      users === undefined
+        ? state.form.affectedUsers === '1'
+          ? ''
+          : state.form.affectedUsers
+        : String(users),
+  };
+  return nextQuestion(
+    {
+      ...state,
+      form,
+      suggestions: {
+        serviceId: medium(serviceId),
+        impact: medium(impact),
+        urgency: medium(urgency),
+        affectedUsers: suggestedUsers === undefined ? undefined : String(suggestedUsers),
+      },
+      messages: [...state.messages, { from: 'user', text: message.trim() }],
+    },
+    'service',
+    services,
+    reading.reply ?? undefined,
+    reading.engine,
+  );
+}
+
+function suggestedAnswer(state: IntakeState) {
+  const { step, suggestions, form } = state;
+  if (step === 'problem' || step === 'review' || step === 'service') return undefined;
+  const field = FIELDS_BY_STEP[step];
+  // An answer edited in the form wins over the reading's guess.
+  return form[field] ? undefined : suggestions?.[field];
+}
+
+/**
+ * The chat's category, only while the draft still describes what the reading saw: the same
+ * service and text. Otherwise (a different service, or the problem rewritten in the form) the
+ * API's classifier decides, so a laptop report never keeps a payment outage's category.
+ */
+export function chatCategoryId(form: ReportForm) {
+  const basis = form.categoryBasis;
+  return form.categoryId &&
+    basis &&
+    basis.serviceId === form.serviceId &&
+    basis.title === form.title &&
+    basis.description === form.description
+    ? form.categoryId
+    : undefined;
 }
 
 /** Applies one user reply: records it, parses it with the current step, then asks the next question. */
@@ -227,33 +392,55 @@ export function replyTo(
   if (state.step === 'review' || !text.trim()) return state;
   const handler = STEPS[state.step];
   const messages = [...state.messages, { from: 'user' as const, text: shown.trim() }];
-  const result = handler.parse(text, services, state.form);
+  const suggestion = suggestedAnswer(state);
+  const answer =
+    suggestion && confirmsSuggestion.test(normalise(text).trim()) ? String(suggestion) : text;
+  const result = handler.parse(answer, services, state);
   if (result.retry)
     return { ...state, messages: [...messages, { from: 'bot', text: result.retry }] };
   const form = { ...state.form, ...result.patch };
-  const bot = [
-    ...(result.ack ? [result.ack] : []),
-    handler.next === 'review'
-      ? 'Thanks. Here is your draft. Check it, then send it.'
-      : STEPS[handler.next].ask(form, services),
-  ].join(' ');
-  return { step: handler.next, form, messages: [...messages, { from: 'bot', text: bot }] };
+  return nextQuestion({ ...state, form, messages }, handler.next, services, result.ack);
 }
 
 export function quickRepliesFor(state: IntakeState, services: readonly ServiceSummary[]) {
-  return state.step === 'review' ? [] : STEPS[state.step].quickReplies(services, state.form);
+  if (state.step === 'review') return [];
+  const replies = STEPS[state.step].quickReplies(services, state);
+  const suggestion = suggestedAnswer(state);
+  if (!suggestion) return replies;
+  const matching = replies.find(({ value }) =>
+    state.step === 'users'
+      ? parseAffectedUsers(value) === Number(suggestion)
+      : value === String(suggestion),
+  );
+  const option = matching ?? {
+    label: formatPeopleAffected(Number(suggestion)),
+    value: String(suggestion),
+  };
+  return [{ ...option, suggested: true }, ...replies.filter((reply) => reply !== matching)];
 }
 
-/**
- * Plain-language restatement of what decides the priority. The server computes the real
- * priority (impact × urgency × service criticality, scaled by head count) when it is sent.
- */
-export function priorityPreview(form: ReportForm, service: ServiceSummary | undefined) {
-  if (!form.impact || !form.urgency || !service) return '';
-  const people = Number(form.affectedUsers).toLocaleString('en-IN');
-  return (
-    `Impact ${LEVEL_LABEL[form.impact]} × urgency ${LEVEL_LABEL[form.urgency]} on a ` +
-    `${CRITICALITY_LABEL[service.criticality]}${service.criticality === 4 ? '' : '-criticality'} service, ${people} ${people === '1' ? 'person' : 'people'} affected. ` +
-    'We set the exact priority and SLA when you send it.'
-  );
+export function formatPeopleAffected(people: number) {
+  return people === 1 ? '1 (just you)' : `${people.toLocaleString('en-IN')} people`;
+}
+
+export function priorityPreviewRows(
+  form: ReportForm,
+  service: ServiceSummary | undefined,
+  mode: 'form' | 'chat' = 'form',
+) {
+  if (!form.impact || !form.urgency || !service) return null;
+  const criticality = CRITICALITY_LABEL[service.criticality];
+  if (!criticality) return null;
+  const serviceFactor = { label: 'Service criticality', value: criticality };
+  if (mode === 'chat') return [serviceFactor];
+  const factors = [
+    { label: 'Impact', value: LEVEL_LABEL[form.impact]! },
+    { label: 'Urgency', value: LEVEL_LABEL[form.urgency]! },
+    serviceFactor,
+  ] as const;
+  if (reportErrors(form).affectedUsers) return factors;
+  return [
+    ...factors,
+    { label: 'People affected', value: formatPeopleAffected(Number(form.affectedUsers)) },
+  ] as const;
 }

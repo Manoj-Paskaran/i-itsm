@@ -44,9 +44,15 @@ class ResilientGateway:
         request: BaseModel,
         primaries: Sequence[Callable[[], Awaitable[T]]],
         fallback: Callable[[], Awaitable[T]],
+        *,
+        cache: bool = True,
     ) -> T:
-        key = kind + hashlib.sha256(request.model_dump_json(by_alias=True).encode()).hexdigest()
-        if key in self.cache:
+        key = (
+            kind + hashlib.sha256(request.model_dump_json(by_alias=True).encode()).hexdigest()
+            if cache
+            else None
+        )
+        if key is not None and key in self.cache:
             self.cache.move_to_end(key)
             return cast(T, self.cache[key].model_copy(deep=True))
 
@@ -93,6 +99,8 @@ class ResilientGateway:
             response = await fallback()
             if primaries:
                 return response
+        if key is None:
+            return response
         self.cache[key] = response.model_copy(deep=True)
         self.cache.move_to_end(key)
         while len(self.cache) > self.cache_size:

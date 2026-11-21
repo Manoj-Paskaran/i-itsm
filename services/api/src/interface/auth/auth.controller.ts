@@ -13,6 +13,7 @@ import { InvalidInputException, InvalidTokenException } from '../../domain/excep
 import { Permission, type User } from '../../domain/users/index.js';
 import { ENV } from '../../infrastructure/config/config.module.js';
 import type { Env } from '../../infrastructure/config/env.js';
+import { parseDemoEmailOverride } from '../../infrastructure/db/seed/users.js';
 import { CurrentUser, Public, RequirePermissions } from './decorators.js';
 import { refreshCookieOptions, setRefreshCookie } from './refresh-cookie.js';
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -23,10 +24,20 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 }
 @Controller('auth')
 export class AuthController {
+  /** Seeded address → real address when the seed ran with DEMO_EMAIL_OVERRIDE. */
+  private readonly demoAlias: { from: string; to: string } | undefined;
   constructor(
     private readonly auth: AuthService,
     @Inject(ENV) private readonly env: Env,
-  ) {}
+  ) {
+    this.demoAlias = parseDemoEmailOverride(env.DEMO_EMAIL_OVERRIDE);
+  }
+  /** The seeded address still signs in after the override replaced it (demo account cards). */
+  private loginEmail(email: string): string {
+    return this.demoAlias && email.trim().toLowerCase() === this.demoAlias.from
+      ? this.demoAlias.to
+      : email;
+  }
   private respond(res: Response, session: Awaited<ReturnType<AuthService['login']>>): AuthResponse {
     setRefreshCookie(res, session.refresh, this.env);
     return AuthResponseSchema.parse({
@@ -49,7 +60,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async login(@Body() body: unknown, @Res({ passthrough: true }) res: Response) {
     const data = parseBody(LoginRequestSchema, body);
-    return this.respond(res, await this.auth.login(data.email, data.password));
+    return this.respond(res, await this.auth.login(this.loginEmail(data.email), data.password));
   }
   @Public()
   @Post('refresh')

@@ -1,0 +1,41 @@
+{
+  "_about": "Versioned first-message demo readings. Replays resolve service names against the current catalog after every re-seed.",
+  "entries": [
+    {
+      "message": "hey the card payment thing on the website isn't working, customers keep complaining they can't pay",
+      "model": "gemini-3.5-flash-lite",
+      "promptVersion": "chat-intake-v2",
+      "capturedAt": "2026-11-19",
+      "capturedBy": "hand-written",
+      "note": "Hand-written placeholder — re-capture with scripts/capture_chat_intake_fixture.py",
+      "reading": {
+        "serviceName": { "value": "Payment Gateway", "confidence": 0.96 },
+        "categoryCode": { "value": "application", "confidence": 0.8 },
+        "impact": { "value": 4, "confidence": 0.9 },
+        "urgency": { "value": 4, "confidence": 0.7 },
+        "affectedUsers": null,
+        "title": "Card payments failing at checkout",
+        "summary": "Card payments are failing at website checkout. Customers are reporting that they cannot pay.",
+        "reply": "Sounds like card payments are failing at checkout, so customers can't pay."
+      }
+    },
+    {
+      "message": "checkout is showing some payment error",
+      "model": "gemini-3.5-flash-lite",
+      "promptVersion": "chat-intake-v2",
+      "capturedAt": "2026-11-19",
+      "capturedBy": "hand-written",
+      "note": "Hand-written placeholder — re-capture with scripts/capture_chat_intake_fixture.py",
+      "reading": {
+        "serviceName": { "value": "Payment Gateway", "confidence": 0.75 },
+        "categoryCode": { "value": "application", "confidence": 0.8 },
+        "impact": null,
+        "urgency": null,
+        "affectedUsers": null,
+        "title": "Payment error at checkout",
+        "summary": "Checkout is showing a payment error.",
+        "reply": "Sounds like you're seeing a payment error at checkout."
+      }
+    }
+  ]
+}

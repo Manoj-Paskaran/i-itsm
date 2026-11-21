@@ -12,6 +12,12 @@ from itsm_ml.api.routes import router
 from itsm_ml.classifiers.category import ClassifierChain
 from itsm_ml.classifiers.trained import TrainedCategoryClassifier
 from itsm_ml.config import Settings
+from itsm_ml.genai.chat_intake import (
+    CachedFirstMessageReader,
+    FallbackFirstMessageReader,
+    GeminiFirstMessageReader,
+    load_chat_intake_fixture,
+)
 from itsm_ml.genai.classifier import GeminiZeroShotClassifier
 from itsm_ml.genai.gateway import ResilientGateway
 from itsm_ml.genai.intake import AdkIntakeAgent, RuleBasedIntakeAgent
@@ -66,12 +72,14 @@ def create_app() -> FastAPI:
     app.state.report_fallback = RuleBasedReportAgent()
     app.state.intake_agents = []
     app.state.report_agents = []
-    app.state.ai_gateway = ResilientGateway(
+    gateway = ResilientGateway(
         settings.gemini_timeout_seconds,
         settings.gemini_retries,
         settings.gemini_backoff_seconds,
         settings.ai_cache_size,
     )
+    app.state.ai_gateway = gateway
+    first_message_readers: list[GeminiFirstMessageReader] = []
     if settings.gemini_api_key:
         key = settings.gemini_api_key.get_secret_value()
         models = dict.fromkeys(
@@ -84,6 +92,24 @@ def create_app() -> FastAPI:
             app.state.report_agents.append(
                 GeminiReportAgent(key, model, settings.gemini_timeout_seconds)
             )
+            first_message_readers.append(
+                GeminiFirstMessageReader(key, model, settings.chat_intake_timeout_seconds)
+            )
+    # The chat waits on this answer, so it gets its own, shorter budget than intake/report.
+    chat_gateway = ResilientGateway(
+        settings.chat_intake_timeout_seconds,
+        settings.gemini_retries,
+        settings.gemini_backoff_seconds,
+        settings.ai_cache_size,
+    )
+    app.state.chat_intake_reader = CachedFirstMessageReader(
+        FallbackFirstMessageReader(first_message_readers, chat_gateway),
+        [reader.model for reader in first_message_readers],
+        load_chat_intake_fixture(),
+        replay_ms=settings.chat_intake_replay_ms,
+        cache_size=settings.ai_cache_size,
+        use_fixture=settings.chat_intake_use_fixture,
+    )
 
     @app.middleware("http")
     async def request_id(
