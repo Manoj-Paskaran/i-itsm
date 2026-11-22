@@ -4,6 +4,7 @@ import { Copy, Layers, Lightbulb, Sparkles } from 'lucide-react';
 import { useIncidentAction } from '@/lib/incidents';
 import { clusterHeadline } from '@/lib/insights';
 import { formatScore } from '@/lib/staff';
+import { scrollPageToTop } from './staff-actions';
 
 const small =
   'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-hover disabled:opacity-50 max-sm:min-h-10';
@@ -107,9 +108,14 @@ export function RelatedPanel({
                 <button
                   className={`${small} mt-2`}
                   disabled={mutation.isPending}
-                  onClick={() =>
-                    mutation.mutate({ action: 'closeAsDuplicate', duplicateOfId: incident.id })
-                  }
+                  onClick={(e) => {
+                    const main = e.currentTarget.closest('main');
+                    // mutateAsync: this panel may re-render away before success, which drops mutate's callbacks.
+                    mutation
+                      .mutateAsync({ action: 'closeAsDuplicate', duplicateOfId: incident.id })
+                      .then(() => scrollPageToTop(main))
+                      .catch(() => undefined);
+                  }}
                 >
                   <Copy size={13} aria-hidden />
                   Close as duplicate of {incident.number}

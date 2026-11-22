@@ -3,14 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Route } from '@/routes/login';
 
+const authState: { status: 'anonymous' | 'authenticated' } = vi.hoisted(() => ({
+  status: 'anonymous',
+}));
 vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   useNavigate: () => vi.fn(),
+  Navigate: ({ to }: { to: string }) => <div data-testid="navigate" data-to={to} />,
 }));
 const login = vi.fn().mockResolvedValue(undefined);
-vi.mock('@/lib/auth', () => ({ useAuth: () => ({ status: 'anonymous', login }) }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ status: authState.status, login }) }));
 const Login = Route.options.component!;
 beforeEach(() => {
+  authState.status = 'anonymous';
+  login.mockReset().mockResolvedValue(undefined);
   vi.spyOn(Route, 'useSearch').mockReturnValue({});
 });
 afterEach(() => {
@@ -78,4 +84,16 @@ it('demoAccountsCoverEveryDemoScriptRole', () => {
   renderLogin();
   for (const person of ['Priya', 'Farah', 'Divya', 'Vikram', 'Arjun'])
     expect(screen.getByRole('button', { name: new RegExp(person) })).toBeTruthy();
+});
+it('demoAccountCardAlwaysLandsOnHomeEvenWithIncidentRedirect', async () => {
+  vi.spyOn(Route, 'useSearch').mockReturnValue({ redirect: '/incidents/123' });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ google: false })));
+  login.mockImplementation(() => {
+    authState.status = 'authenticated';
+    return Promise.resolve();
+  });
+  renderLogin();
+  fireEvent.click(screen.getByRole('button', { name: /Farah\s*Technician/ }));
+  await waitFor(() => expect(login).toHaveBeenCalledWith('farah@itsm.demo', 'demo1234'));
+  await waitFor(() => expect(screen.getByTestId('navigate').getAttribute('data-to')).toBe('/'));
 });

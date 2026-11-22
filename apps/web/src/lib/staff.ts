@@ -21,7 +21,14 @@ export function navItems(user: Pick<AuthUser, 'role' | 'permissions'> | null): N
 }
 
 const LEVEL_RANK = { TECHNICIAN: 0, TEAM_LEAD: 1, SYS_ADMIN: 2, IT_MANAGER: 3 };
-/** SLA monitor rows: not-closed incidents (the set the SLA report counts) that are breached or at risk, breached first, then most escalated. */
+const PRIORITY_RANK = { P1: 0, P2: 1 } as const;
+const SETTLED_STATUSES: ReadonlySet<IncidentSummary['status']> = new Set([
+  'RESOLVED',
+  'VERIFIED',
+  'CLOSED',
+]);
+
+/** SLA monitor rows: not-closed incidents (the set the SLA report counts) that are breached or at risk, latest reported first. */
 export function slaWatchlist<
   T extends Pick<IncidentSummary, 'id' | 'slaStatus' | 'escalationLevel' | 'createdAt' | 'status'>,
 >(incidents: T[], predictedHigh: ReadonlySet<string> = new Set()) {
@@ -34,9 +41,32 @@ export function slaWatchlist<
     )
     .sort(
       (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) ||
         Number(b.slaStatus === 'BREACHED') - Number(a.slaStatus === 'BREACHED') ||
-        LEVEL_RANK[b.escalationLevel] - LEVEL_RANK[a.escalationLevel] ||
-        a.createdAt.localeCompare(b.createdAt),
+        LEVEL_RANK[b.escalationLevel] - LEVEL_RANK[a.escalationLevel],
+    );
+}
+
+/** Open (not resolved/verified/closed) P1 and P2 incidents whose SLA is on track or paused and not already on the attention watchlist, latest reported first. */
+export function slaOnTrackPriority<
+  T extends Pick<
+    IncidentSummary,
+    'id' | 'priority' | 'slaStatus' | 'escalationLevel' | 'createdAt' | 'status'
+  >,
+>(incidents: T[], predictedHigh: ReadonlySet<string> = new Set()) {
+  return incidents
+    .filter(
+      (i): i is T & { priority: 'P1' | 'P2' } =>
+        !SETTLED_STATUSES.has(i.status) &&
+        (i.priority === 'P1' || i.priority === 'P2') &&
+        (i.slaStatus === 'ON_TRACK' || i.slaStatus === 'PAUSED') &&
+        !predictedHigh.has(i.id),
+    )
+    .sort(
+      (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) ||
+        PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+        LEVEL_RANK[b.escalationLevel] - LEVEL_RANK[a.escalationLevel],
     );
 }
 

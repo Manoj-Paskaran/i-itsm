@@ -38,8 +38,8 @@ export class EscalationPolicy {
     const s = (n: number) => Duration.ofSeconds(n);
     const standard = EscalationPolicy.standard();
     return new EscalationPolicy({
-      P1: [s(20), s(40), s(60)],
-      P2: [s(40), s(80), s(120)],
+      P1: [s(60), s(90), s(120)],
+      P2: [s(120), s(180), s(240)],
       P3: standard.thresholdsFor(Priority.P3),
       P4: standard.thresholdsFor(Priority.P4),
     });

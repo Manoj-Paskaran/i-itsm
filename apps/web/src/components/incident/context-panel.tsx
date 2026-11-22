@@ -1,13 +1,13 @@
 import type { IncidentDetail } from '@itsm/contracts';
 import { Check, UserX } from 'lucide-react';
 import { initials } from '@/components/app-shell';
-import { CRITICALITY_LABEL, formatAssignmentReason } from '@/lib/incidents';
+import { CRITICALITY_LABEL } from '@/lib/incidents';
 import { useWorkspaceInsights } from '@/lib/insights';
 import { useNow } from '@/lib/use-now';
 import { RiskBadge } from './chips';
 import { Advisory, RelatedPanel, SuggestedResolutions } from './insights-panel';
 import { PriorityCalculation } from './priority-calculation';
-import { AssignPanel, DuplicatePanel } from './staff-actions';
+import { AssignPanel, DuplicatePanel, formatAssignmentReasons } from './staff-actions';
 export function formatDate(value: string) {
   return new Date(value).toLocaleString('en-GB', {
     day: 'numeric',
@@ -21,6 +21,7 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
   const insights = useWorkspaceInsights(detail);
   const now = useNow();
   const riskReasons = insights?.slaRisk?.reasons.join(' · ') ?? '';
+  const assignmentReasons = formatAssignmentReasons(detail.assignmentReasons);
   return (
     <aside
       aria-label="Incident context"
@@ -46,13 +47,17 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
               Waiting for assignment
             </div>
           )}
-          {!!detail.assignmentReasons.length && (
+          {!!assignmentReasons.length && (
             <>
               <p className="mt-3 text-xs font-medium">Why {detail.assignee?.name.split(' ')[0]}</p>
               <ul className="mt-1 space-y-1">
-                {detail.assignmentReasons.map(formatAssignmentReason).map((reason, i) => (
-                  <li key={i} className="flex gap-1.5 text-xs text-muted-foreground">
-                    <Check size={12} className="shrink-0 text-success-foreground" aria-hidden />
+                {assignmentReasons.map((reason, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Check
+                      size={12}
+                      className="mt-0.5 shrink-0 text-success-foreground"
+                      aria-hidden
+                    />
                     {reason}
                   </li>
                 ))}
@@ -61,6 +66,8 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
           )}
           <AssignPanel detail={detail} />
         </section>
+        {insights && <RelatedPanel detail={detail} insights={insights} />}
+        <DuplicatePanel detail={detail} suggestedDuplicateId={insights?.similar[0]?.incident.id} />
         {insights?.slaRisk &&
           detail.slaDeadlines &&
           Date.parse(detail.slaDeadlines.resolution) > now.getTime() && (
@@ -73,8 +80,6 @@ export function ContextPanel({ detail }: { detail: IncidentDetail }) {
               </p>
             </section>
           )}
-        {insights && <RelatedPanel detail={detail} insights={insights} />}
-        <DuplicatePanel detail={detail} />
         {insights && <SuggestedResolutions insights={insights} />}
         <section>
           <h2 className="mb-2 text-xs font-semibold text-muted-foreground">Details</h2>

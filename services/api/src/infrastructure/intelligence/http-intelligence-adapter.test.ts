@@ -90,6 +90,46 @@ describe('HttpIntelligenceAdapter', () => {
       minutesToDeadline: 60,
     });
   });
+  it('usesDomainRulesWhenMlServiceAnswersWithRulesFallback', async () => {
+    const fetchFn = vi.fn(() => json({ probability: 0.25, level: 'low', source: 'rules' }));
+    const { adapter } = await setup(fetchFn);
+    const escalated = Incident.rehydrate({
+      ...snapshot('ASSIGNED'),
+      priority: 'P1',
+      escalationLevel: 'IT_MANAGER',
+    });
+    const { result, source } = await adapter.slaRisk(escalated, context);
+    expect(source).toBe('rules');
+    expect(result).toEqual({
+      probability: 0.95,
+      level: 'HIGH',
+      reasons: [
+        '50% of the resolution window used',
+        'P1 has a tight window',
+        'escalated to IT manager',
+      ],
+    });
+  });
+  it('addsEscalationWeightToModelRiskPrediction', async () => {
+    const fetchFn = vi.fn(() => json({ probability: 0.35, level: 'low', source: 'model' }));
+    const { adapter } = await setup(fetchFn);
+    const escalated = Incident.rehydrate({
+      ...snapshot('ASSIGNED'),
+      priority: 'P1',
+      escalationLevel: 'IT_MANAGER',
+    });
+    const { result, source } = await adapter.slaRisk(escalated, context);
+    expect(source).toBe('model');
+    expect(result).toEqual({
+      probability: 0.65,
+      level: 'MEDIUM',
+      reasons: [
+        '50% of the resolution window used',
+        'P1 has a tight window',
+        'escalated to IT manager',
+      ],
+    });
+  });
   it.each([
     ['an unreachable service', () => Promise.reject(new TypeError('fetch failed'))],
     ['a missing probability', () => json({ level: 'high' })],

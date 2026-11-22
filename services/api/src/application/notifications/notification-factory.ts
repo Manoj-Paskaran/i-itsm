@@ -19,6 +19,10 @@ export interface NotificationIncident {
   readonly id: IncidentId;
   readonly number: string;
   readonly title: string;
+  readonly resolution?: {
+    readonly summary: string;
+    readonly rootCause?: string;
+  } | null;
 }
 function roleLabel(role: string): string {
   return role
@@ -32,12 +36,18 @@ export class NotificationFactory {
     event: DomainEvent,
     recipients: readonly User[],
     incident: NotificationIncident | null,
+    actorName?: string,
   ): NotificationMessage[] {
     const number = incident?.number ?? 'Incident';
     const details = incident?.title ?? '';
+    const trimmedActor = actorName?.trim();
+    const incidentTitle = incident?.title.trim();
     return [...new Map(recipients.map((user) => [user.id(), user])).values()].map((user) => {
       let title: string;
       let body = details;
+      let resolutionSummary: string | undefined;
+      let rootCause: string | undefined;
+      let question: string | undefined;
       switch (event.type) {
         case EventType.IncidentCreated:
           title = `${number} created`;
@@ -54,7 +64,10 @@ export class NotificationFactory {
           break;
         case EventType.InfoRequested:
           title = `Information requested for ${number}`;
-          if (event instanceof InfoRequested) body = event.question;
+          if (event instanceof InfoRequested) {
+            body = event.question;
+            question = event.question;
+          }
           break;
         case EventType.InfoProvided:
           title = `Information provided for ${number}`;
@@ -72,7 +85,15 @@ export class NotificationFactory {
           break;
         case EventType.IncidentResolved:
           title = `${number} resolved`;
-          if (event instanceof IncidentResolved) body = event.summary;
+          if (event instanceof IncidentResolved) {
+            body = event.summary;
+            resolutionSummary = event.summary;
+          } else if (incident?.resolution?.summary) {
+            resolutionSummary = incident.resolution.summary;
+          }
+          if (incident?.resolution?.rootCause?.trim()) {
+            rootCause = incident.resolution.rootCause.trim();
+          }
           break;
         case EventType.IncidentReopened:
           title = `${number} reopened`;
@@ -93,6 +114,11 @@ export class NotificationFactory {
         body,
         incidentId: incident?.id ?? null,
         incidentNumber: incident?.number ?? null,
+        ...(incidentTitle ? { incidentTitle } : {}),
+        ...(trimmedActor ? { actorName: trimmedActor } : {}),
+        ...(resolutionSummary ? { resolutionSummary } : {}),
+        ...(rootCause ? { rootCause } : {}),
+        ...(question ? { question } : {}),
         createdAt: event.occurredAt,
       };
     });

@@ -31,6 +31,7 @@ import {
   Admin,
   Availability,
   Employee,
+  ITManager,
   Role,
   TeamLead,
   Technician,
@@ -80,7 +81,7 @@ const cmd = {
   urgency: 4,
   affectedUsers: 200,
 };
-async function setup(available = true) {
+async function setup(available = true, assignee = technician) {
   const incidents = new InMemoryIncidentRepository(),
     users = new InMemoryUserRepository(),
     services = new InMemoryServiceRepository(),
@@ -88,7 +89,7 @@ async function setup(available = true) {
     policies = new InMemorySlaPolicyRepository(),
     audit = new InMemoryAuditRepository();
   const tech = Technician.rehydrate({
-    ...technician.toSnapshot(),
+    ...assignee.toSnapshot(),
     availability: available ? Availability.AVAILABLE : Availability.OFF_SHIFT,
   } as Parameters<typeof Technician.rehydrate>[0]);
   for (const u of [employee, employee2, tech, admin]) await users.save(u);
@@ -100,6 +101,7 @@ async function setup(available = true) {
   let n = 0;
   events.subscribe(new AuditRecorder(audit, () => asAuditId(`audit-${++n}`)));
   const matrix = new MatrixPriorityStrategy();
+  const assigner = new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults());
   const suggester = new KeywordCategorySuggester();
   const svc = new IncidentService(
     incidents,
@@ -109,12 +111,31 @@ async function setup(available = true) {
     policies,
     suggester,
     new PriorityStrategyRegistry([matrix], matrix.name),
-    new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults()),
+    assigner,
     events,
     clock,
     audit,
   );
-  return { svc, incidents, users, services, categories, suggester, audit, tech, clock };
+  return { svc, incidents, users, services, categories, suggester, audit, tech, clock, assigner };
+}
+const internalNote = 'Confirmed PG-503 across all cards; checking the gateway connection pool.';
+async function setupInvestigation() {
+  // The audit API validates actor ids as UUIDs.
+  const assignee = Technician.rehydrate({
+    ...technician.toSnapshot(),
+    id: asUserId('22222222-2222-4222-8222-222222222222'),
+  } as Parameters<typeof Technician.rehydrate>[0]);
+  const { svc, users } = await setup(true, assignee);
+  const reporter = Employee.rehydrate({
+    ...employee.toSnapshot(),
+    id: asUserId('11111111-1111-4111-8111-111111111111'),
+  });
+  await users.save(reporter);
+  const { id } = await svc.report(reporter, cmd);
+  await svc.acknowledge(assignee, id);
+  await svc.startWork(assignee, id);
+  await svc.addNote(assignee, id, internalNote);
+  return { svc, assignee, reporter, id };
 }
 describe('IncidentService rules', () => {
   it('usesTheChatIntakeCategoryWhenGiven', async () => {
@@ -232,6 +253,60 @@ describe('IncidentService rules', () => {
     await svc.feedback(employee, d.id, 5, 'Great');
     expect((await svc.close(employee, d.id)).status).toBe('CLOSED');
   });
+  it('employeeDoesNotSeeInternalNotes', async () => {
+    const { svc, reporter, id } = await setupInvestigation();
+    expect((await svc.get(reporter, id)).notes).toEqual([]);
+    const entries = await svc.audit(reporter, id);
+    expect(entries.map((entry) => entry.action)).not.toContain('NoteAdded');
+    expect(JSON.stringify(entries)).not.toContain(internalNote);
+  });
+  it('staffSeeInternalNotes', async () => {
+    const { svc, assignee, id } = await setupInvestigation();
+    const lead = TeamLead.rehydrate({
+      ...(assignee.toSnapshot() as Parameters<typeof Technician.rehydrate>[0]),
+      id: asUserId('lead'),
+      role: Role.TEAM_LEAD,
+      team: [],
+    });
+    const manager = ITManager.rehydrate({ ...admin.toSnapshot(), id: asUserId('manager') });
+    for (const staff of [assignee, lead, manager, admin]) {
+      expect((await svc.get(staff, id)).notes).toEqual([
+        {
+          author: { id: assignee.id(), name: assignee.name() },
+          text: internalNote,
+          at: at.toIso(),
+        },
+      ]);
+      const note = (await svc.audit(staff, id)).find((entry) => entry.action === 'NoteAdded');
+      expect(note?.description).toContain(internalNote);
+    }
+  });
+  it('reporterStillSeesInfoRequestsAndResolution', async () => {
+    const { svc, assignee, reporter, id } = await setupInvestigation();
+    const question = 'When did the errors start?';
+    const answer = 'At 09:15.';
+    const summary = 'Restored checkout.';
+    await svc.requestInfo(assignee, id, question);
+    const answered = await svc.provideInfo(reporter, id, answer);
+    expect(answered.notes).toEqual([]);
+    expect(answered.infoRequests).toMatchObject([{ question, answer }]);
+    await svc.resolve(assignee, id, summary);
+    expect((await svc.get(reporter, id)).resolution?.summary).toBe(summary);
+    const activity = new Map((await svc.audit(reporter, id)).map((e) => [e.action, e.description]));
+    expect(activity.has('WorkStarted')).toBe(true);
+    expect(activity.get('InfoRequested')).toContain(question);
+    expect(activity.get('InfoProvided')).toContain(answer);
+    expect(activity.get('IncidentResolved')).toContain(summary);
+  });
+  it('reporterStillSeesTheirOwnAddedInformation', async () => {
+    const { svc, reporter, id } = await setupInvestigation();
+    const own = 'Also failing on the mobile app.';
+    const after = await svc.addNote(reporter, id, own);
+    expect(after.notes.map((n) => n.text)).toEqual([own]);
+    const notes = (await svc.audit(reporter, id)).filter((e) => e.action === 'NoteAdded');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.description).toContain(own);
+  });
   it('commandRecordsSlaBreachEvenWithoutAMonitorSweep', async () => {
     const { svc, audit, clock } = await setup();
     const d = await svc.report(employee, cmd);
@@ -303,6 +378,82 @@ describe('IncidentService rules', () => {
     const rec = await svc.recommendations(admin, d.id);
     expect(rec).toHaveLength(3);
     expect(rec.every((r) => r.reasons.length > 0)).toBe(true);
+  });
+  it('manualReassignmentExplainsWhoChoseTheTechnicianAndWhy', async () => {
+    const { svc, users, tech } = await setup();
+    const d = await svc.report(employee, cmd);
+    expect(d.assignee?.id).toBe(tech.id());
+    await users.save(otherTechnician);
+    const lead = TeamLead.rehydrate({
+      ...(tech.toSnapshot() as Parameters<typeof Technician.rehydrate>[0]),
+      id: asUserId('divya'),
+      name: 'Divya Rao',
+      email: 'divya@example.com',
+      role: Role.TEAM_LEAD,
+      team: [tech.id(), otherTechnician.id()],
+    });
+    const [suggestion] = await svc.recommendations(lead, d.id);
+    expect(suggestion?.technician.id).toBe(otherTechnician.id());
+    expect(suggestion?.reasons).toContain('0/2 active incidents');
+    const reasons = ['chosen by Divya Rao from the advisory suggestions', ...suggestion!.reasons];
+
+    const reassigned = await svc.assign(lead, d.id, otherTechnician.id());
+    expect(reassigned.assignee?.id).toBe(otherTechnician.id());
+    expect(reassigned.assignmentReasons).toEqual(reasons);
+    expect((await svc.get(lead, d.id)).assignmentReasons).toEqual(reasons);
+  });
+  it('manualReassignmentOmitsNegativeSkillReasonsFromExplanation', async () => {
+    const { svc, users } = await setup();
+    const d = await svc.report(employee, cmd);
+    const chosen = Technician.rehydrate({
+      ...(otherTechnician.toSnapshot() as Parameters<typeof Technician.rehydrate>[0]),
+      skills: ['database'],
+    });
+    await users.save(chosen);
+    const suggestions = await svc.recommendations(admin, d.id);
+    const match = suggestions.find((r) => r.technician.id === chosen.id());
+    expect(match?.reasons).toContain('lacks network skill');
+
+    const result = await svc.assign(admin, d.id, chosen.id());
+    expect(result.assignmentReasons).toEqual([
+      'chosen by Admin from the advisory suggestions',
+      '0/2 active incidents',
+      'resolved 0 incidents on this service · 2 years experience',
+    ]);
+  });
+  it('manualAssignmentOutsideTopSuggestionsSaysWhoChoseWithoutAdvisoryClaim', async () => {
+    const { svc, users } = await setup();
+    const d = await svc.report(employee, cmd);
+    for (let n = 1; n <= 3; n++)
+      await users.save(
+        Technician.rehydrate({
+          ...(technician.toSnapshot() as Parameters<typeof Technician.rehydrate>[0]),
+          id: asUserId(`extra${n}`),
+          email: `extra${n}@example.com`,
+        }),
+      );
+    const chosen = Technician.rehydrate({
+      ...(otherTechnician.toSnapshot() as Parameters<typeof Technician.rehydrate>[0]),
+      skills: ['database'],
+    });
+    await users.save(chosen);
+    const suggestions = await svc.recommendations(admin, d.id);
+    expect(suggestions.map((r) => r.technician.id)).not.toContain(chosen.id());
+
+    const result = await svc.assign(admin, d.id, chosen.id());
+    expect(result.assignmentReasons).toEqual(['chosen by Admin']);
+    expect((await svc.get(admin, d.id)).assignmentReasons).toEqual(['chosen by Admin']);
+  });
+  it('manualAssignmentOfUnrankedTechnicianSaysWhoChose', async () => {
+    const { svc, users, assigner } = await setup();
+    const d = await svc.report(employee, cmd);
+    await users.save(otherTechnician);
+    vi.spyOn(assigner, 'recommend').mockReturnValue([]);
+
+    const result = await svc.assign(admin, d.id, otherTechnician.id());
+    expect(result.assignee?.id).toBe(otherTechnician.id());
+    expect(result.assignmentReasons).toEqual(['chosen by Admin']);
+    expect((await svc.get(admin, d.id)).assignmentReasons).toEqual(['chosen by Admin']);
   });
 });
 describe('KeywordCategorySuggester rules', () => {

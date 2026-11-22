@@ -141,19 +141,8 @@ describe('chat intake', () => {
     expect(state.messages.at(-1)?.text).toBe('This sounds like Payment Gateway. Is that right?');
     expect(quickRepliesFor(state, services).map((r) => r.label)).toContain('Yes, Payment Gateway');
   });
-  it('offersFullProblemExamplesThatSendTheirOwnTextAndMatchSeededServices', () => {
-    const examples = quickRepliesFor(startIntake(empty), services);
-    expect(examples.map(({ label }) => label)).toEqual([
-      "hey the card payment thing on the website isn't working, customers keep complaining they can't pay",
-      'My laptop screen flickers when I connect the office dock.',
-      'The VPN disconnects every few minutes when I work from home.',
-    ]);
-    expect(examples.map(({ value }) => matchService(value, services)?.id)).toEqual([
-      'pay',
-      'laptop',
-      'vpn',
-    ]);
-    expect(examples.every(({ label, value }) => label === value)).toBe(true);
+  it('offersNoStarterSuggestionsAtTheProblemStep', () => {
+    expect(quickRepliesFor(startIntake(empty), services)).toEqual([]);
   });
   it('fillsTheSameFormStateAsTheClassicForm', () => {
     const state = say([problem, 'Payment Gateway', '4', 'right now please', 'about 200']);

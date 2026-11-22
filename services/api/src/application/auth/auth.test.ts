@@ -7,7 +7,7 @@ import {
   InvalidInputException,
   InvalidTokenException,
 } from '../../domain/exceptions/index.js';
-import { asUserId, Email } from '../../domain/shared/index.js';
+import { asIncidentId, asUserId, Email } from '../../domain/shared/index.js';
 import { Role, UserFactory } from '../../domain/users/index.js';
 import type { TokenService } from '../../ports/index.js';
 import { MemoryUsers, fakeHasher } from './testing.js';
@@ -16,6 +16,12 @@ const tokens: TokenService = {
   issueRefresh: async (u) => ({ token: u.id(), maxAgeSeconds: 60 }),
   verifyAccess: async () => ({ sub: asUserId('id'), role: Role.EMPLOYEE }),
   verifyRefresh: async (token) => ({ userId: asUserId(token) }),
+  issueEmailLink: async (userId, incidentId) => `${userId}:${incidentId}`,
+  verifyEmailLink: async (token) => {
+    const [userId, incidentId] = token.split(':');
+    if (!userId || !incidentId) throw new InvalidTokenException();
+    return { userId: asUserId(userId), incidentId: asIncidentId(incidentId) };
+  },
 };
 const cmd = { name: 'Alice', email: 'alice@example.com', password: 'password', department: 'IT' };
 function setup() {
@@ -134,5 +140,21 @@ describe('AuthService', () => {
     });
     await users.save(admin);
     expect((await auth.me(admin.id())).permissions).toEqual([...admin.permissions()]);
+  });
+  it('loginWithEmailLinkReturnsSessionAndIncidentId', async () => {
+    const { auth } = setup();
+    const reg = await auth.register(cmd);
+    const token = await tokens.issueEmailLink(asUserId(reg.user.id), asIncidentId('inc-1'));
+    const session = await auth.loginWithEmailLink(token);
+    expect(session.user.id).toBe(reg.user.id);
+    expect(session.incidentId).toBe('inc-1');
+    expect(session.refresh.token).toBe(reg.user.id);
+  });
+  it('loginWithEmailLinkRejectsInactiveUser', async () => {
+    const { auth, users } = setup();
+    const reg = await auth.register(cmd);
+    (await users.findById(asUserId(reg.user.id)))!.deactivate();
+    const token = await tokens.issueEmailLink(asUserId(reg.user.id), asIncidentId('inc-1'));
+    await expect(auth.loginWithEmailLink(token)).rejects.toBeInstanceOf(InvalidTokenException);
   });
 });

@@ -69,3 +69,40 @@ export function queueSearch(filters: {
   if (filters.assigneeId) params.set('assigneeId', filters.assigneeId);
   return params.toString();
 }
+
+/** Elapsed time since assignment while still unacknowledged: `m:ss` under 1 hour, else `1h 5m`. */
+export function formatUnacknowledged(assignedAt: string, now: Date): string {
+  const start = Date.parse(assignedAt);
+  if (!Number.isFinite(start)) return '0:00';
+  const totalSeconds = Math.max(0, Math.floor((now.getTime() - start) / 1000));
+  if (totalSeconds < 3600) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+}
+
+export interface EscalationChipStyle {
+  level: 1 | 2 | 3;
+  className: string;
+}
+
+/** Progressive visual weight for escalation chips in the staff queue. */
+export function escalationChipStyle(level: Escalation): EscalationChipStyle | null {
+  switch (level) {
+    case 'TEAM_LEAD':
+      return { level: 1, className: 'bg-high-subtle text-high-foreground' };
+    case 'SYS_ADMIN':
+      return {
+        level: 2,
+        className: 'bg-high-subtle text-high-foreground ring-1 ring-inset ring-high',
+      };
+    case 'IT_MANAGER':
+      return { level: 3, className: 'bg-critical-subtle text-critical-foreground' };
+    case 'TECHNICIAN':
+      return null;
+  }
+}

@@ -82,11 +82,29 @@ describe('lifecycle roadmap', () => {
     expect(sla?.text).toMatch(/^Response due .+ · 15m overdue$/);
     expect(sla?.tone).toBe('critical');
   });
-  it('reportsResponseMetWhenAcknowledgedBeforeTheDeadline', () =>
+  it('reportsResponseMetWithMarginWhenAcknowledgedBeforeTheDeadline', () =>
     expect(step({ status: 'IN_PROGRESS' }, 'Acknowledged').sla).toMatchObject({
-      text: 'Response met',
+      text: 'Response met · 5m early',
       tone: 'success',
     }));
+  it('reportsResolutionMetWithMarginWhenResolvedBeforeTheDeadline', () =>
+    expect(step({ status: 'RESOLVED' }, 'Resolved').sla).toMatchObject({
+      text: 'Resolution met · 3h 35m early',
+      tone: 'success',
+    }));
+  it('omitsEarlyMarginWhenMetExactlyAtTheDeadline', () =>
+    expect(
+      step(
+        {
+          status: 'IN_PROGRESS',
+          slaDeadlines: {
+            response: '2026-11-04T10:10:00Z',
+            resolution: base.slaDeadlines!.resolution,
+          },
+        },
+        'Acknowledged',
+      ).sla,
+    ).toMatchObject({ text: 'Response met', tone: 'success' }));
   it('reportsHowLateTheResolutionWas', () =>
     expect(
       step(
@@ -100,8 +118,11 @@ describe('lifecycle roadmap', () => {
         'Resolved',
       ).sla,
     ).toMatchObject({ text: 'Resolution late by 5m', tone: 'critical' }));
-  it('pausesTheResolutionCountdownWhileWaitingForInfo', () =>
-    expect(step({ status: 'PENDING_INFO' }, 'Resolved').sla?.text).toMatch(/ · paused$/));
+  it('showsClockPausedWithTimeLeftWhenResumedWhileWaitingForInfo', () =>
+    expect(step({ status: 'PENDING_INFO' }, 'Resolved').sla).toMatchObject({
+      text: 'Clock paused · 3h 30m left when resumed',
+      tone: 'muted',
+    }));
   it('turnsTheCountingTargetAmberWhenTheApiSaysAtRisk', () =>
     expect(
       step(
@@ -144,7 +165,7 @@ describe('lifecycle roadmap', () => {
   it('formatsSameDayClocksWithoutADate', () =>
     expect(formatClock(new Date(2026, 10, 6, 22, 18), new Date(2026, 10, 6, 22, 0))).toBe('22:18'));
   it('keepsResponseMetAfterAReassignSendsTheIncidentBackToAssigned', () =>
-    expect(step({ status: 'ASSIGNED' }, 'Acknowledged').sla?.text).toBe('Response met'));
+    expect(step({ status: 'ASSIGNED' }, 'Acknowledged').sla?.text).toBe('Response met · 5m early'));
   it('keepsTheWorkStartTimeAfterAnInfoRequestIsAnswered', () =>
     expect(
       step({ status: 'IN_PROGRESS' }, 'In progress', [
@@ -153,21 +174,22 @@ describe('lifecycle roadmap', () => {
         entry('IN_PROGRESS', '2026-11-04T10:20:00Z', 'PENDING_INFO'),
       ]).reachedAt?.toISOString(),
     ).toBe('2026-11-04T10:12:00.000Z'));
-  it('namesTheOriginalUnderClosedForADuplicate', () =>
-    expect(
-      step(
-        {
-          status: 'CLOSED',
-          closure: {
-            reason: 'DUPLICATE',
-            closedBy: null,
-            at: now.toISOString(),
-            duplicateOf: { id: 'x', number: 'INC0042' },
-          },
+  it('namesTheOriginalUnderClosedForADuplicate', () => {
+    const closed = step(
+      {
+        status: 'CLOSED',
+        closure: {
+          reason: 'DUPLICATE',
+          closedBy: null,
+          at: now.toISOString(),
+          duplicateOf: { id: 'x', number: 'INC0042' },
         },
-        'Closed',
-      ).note,
-    ).toBe('Duplicate of INC0042'));
+      },
+      'Closed',
+    );
+    expect(closed.note).toBe('Duplicate of INC0042');
+    expect(closed.noteLink).toEqual({ incidentId: 'x', number: 'INC0042' });
+  });
   it('tellsTheReporterTheFixIsWaitingForThem', () =>
     expect(roadmap({ ...base, status: 'RESOLVED' }, trail, now, 'p')[5]?.phase?.text).toBe(
       'Confirming fix · waiting for\u00a0you',
@@ -219,4 +241,18 @@ describe('lifecycle roadmap', () => {
     ).toBe('2026-11-04T10:20:00.000Z'));
   it('saysClassifyingForANewIncident', () =>
     expect(step({ status: 'NEW' }, 'Assigned').phase?.text).toBe('Classifying'));
+  it('saysYourTurnWhenTheAssigneeViewsStepsWaitingForThem', () => {
+    expect(roadmap({ ...base, status: 'ASSIGNED' }, trail, now, 'f')[2]?.phase?.text).toBe(
+      'Acknowledging · your turn',
+    );
+    expect(roadmap({ ...base, status: 'ACKNOWLEDGED' }, trail, now, 'f')[3]?.phase?.text).toBe(
+      'Starting work · your turn',
+    );
+    expect(roadmap({ ...base, status: 'IN_PROGRESS' }, trail, now, 'f')[4]?.phase?.text).toBe(
+      'Resolving · your turn',
+    );
+    expect(roadmap({ ...base, status: 'REOPENED' }, trail, now, 'f')[3]?.phase?.text).toBe(
+      'Reopened · your turn',
+    );
+  });
 });

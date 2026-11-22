@@ -56,6 +56,8 @@ export const IncidentSummarySchema = z.object({
   reporter: PersonRefSchema,
   assignee: PersonRefSchema.nullable(),
   createdAt: iso,
+  /** When the current assignee got it; escalation counts unacknowledged time from here. */
+  assignedAt: iso.nullable(),
   slaStatus: SlaStatusSchema.nullable(),
   escalationLevel: EscalationLevelSchema,
 });

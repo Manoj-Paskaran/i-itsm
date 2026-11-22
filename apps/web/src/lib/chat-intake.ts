@@ -29,8 +29,6 @@ export interface IntakeState {
 }
 export const SKIP_CONFIDENCE = 0.8;
 export const CONFIRM_CONFIDENCE = 0.5;
-export const PAYMENT_EXAMPLE =
-  "hey the card payment thing on the website isn't working, customers keep complaining they can't pay";
 interface StepResult {
   readonly patch?: Partial<ReportForm>;
   /** Set when the reply could not be understood: the bot says this and stays on the step. */
@@ -164,12 +162,7 @@ const STEPS: Record<Exclude<IntakeStep, 'review'>, StepHandler> = {
   problem: {
     next: 'service',
     ask: () => "Hi! What's going wrong? Describe it in a sentence or two.",
-    quickReplies: () =>
-      [
-        PAYMENT_EXAMPLE,
-        'My laptop screen flickers when I connect the office dock.',
-        'The VPN disconnects every few minutes when I work from home.',
-      ].map((example) => ({ label: example, value: example })),
+    quickReplies: () => [],
     parse(text) {
       const { title, description } = splitProblem(text);
       if (title.length < 3 || description.length < 10)

@@ -7,10 +7,15 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../../app.module.js';
 import { MemoryUsers, fakeHasher } from '../../application/auth/testing.js';
-import { asUserId } from '../../domain/shared/index.js';
+import { asIncidentId, asUserId } from '../../domain/shared/index.js';
 import { Role, UserFactory } from '../../domain/users/index.js';
 import { loadEnv } from '../../infrastructure/config/env.js';
-import { PASSWORD_HASHER, USER_REPOSITORY } from '../../ports/index.js';
+import {
+  PASSWORD_HASHER,
+  TOKEN_SERVICE,
+  USER_REPOSITORY,
+  type TokenService,
+} from '../../ports/index.js';
 import { configureApp } from '../configure-app.js';
 const body = { name: 'Alice', email: 'alice@example.com', password: 'password', department: 'IT' };
 describe('auth HTTP', () => {
@@ -113,5 +118,40 @@ describe('auth HTTP', () => {
   });
   it('healthStaysPublic', async () => {
     await request(server()).get('/health').expect(200);
+  });
+  it('emailLinkSetsRefreshCookieAndRedirectsToIncident', async () => {
+    const priya = UserFactory.create({
+      id: asUserId('7e762841-2e65-4a04-8f40-b9fd2574692e'),
+      name: 'Priya Sharma',
+      email: 'priya@itsm.demo',
+      passwordHash: 'hashed:password',
+      department: 'Finance',
+      role: Role.EMPLOYEE,
+    });
+    await users.save(priya);
+    const tokens = app.get<TokenService>(TOKEN_SERVICE);
+    const incidentId = asIncidentId('01900000-0000-7000-8000-000000000215');
+    const token = await tokens.issueEmailLink(priya.id(), incidentId);
+    const response = await request(server())
+      .get('/api/auth/email-link')
+      .query({ token })
+      .expect(302);
+    expect(response.headers.location).toBe(`http://localhost:5173/incidents/${incidentId}`);
+    const cookie = response.headers['set-cookie'] as unknown as string[];
+    expect(cookie.some((c) => c.startsWith('itsm_refresh='))).toBe(true);
+    const refreshed = await request(server())
+      .post('/api/auth/refresh')
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(refreshed.body.user.id).toBe(priya.id());
+  });
+  it('invalidEmailLinkRedirectsToLogin', async () => {
+    const missing = await request(server()).get('/api/auth/email-link').expect(302);
+    expect(missing.headers.location).toBe('http://localhost:5173/login');
+    const invalid = await request(server())
+      .get('/api/auth/email-link')
+      .query({ token: 'not-a-valid-jwt' })
+      .expect(302);
+    expect(invalid.headers.location).toBe('http://localhost:5173/login');
   });
 });

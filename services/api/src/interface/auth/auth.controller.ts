@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import {
   AuthResponseSchema,
@@ -75,6 +86,28 @@ export class AuthController {
   @HttpCode(204)
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie('itsm_refresh', refreshCookieOptions(this.env));
+  }
+  @Public()
+  @Get('email-link')
+  async emailLink(@Query('token') token: unknown, @Res() res: Response) {
+    const loginUrl = new URL('/login', this.env.WEB_ORIGIN).toString();
+    if (typeof token !== 'string' || !token) {
+      res.redirect(302, loginUrl);
+      return;
+    }
+    try {
+      const session = await this.auth.loginWithEmailLink(token);
+      setRefreshCookie(res, session.refresh, this.env);
+      res.redirect(
+        302,
+        new URL(
+          `/incidents/${encodeURIComponent(session.incidentId)}`,
+          this.env.WEB_ORIGIN,
+        ).toString(),
+      );
+    } catch {
+      res.redirect(302, loginUrl);
+    }
   }
   @Get('me') me(@CurrentUser() user: User) {
     return this.auth.me(user.id());

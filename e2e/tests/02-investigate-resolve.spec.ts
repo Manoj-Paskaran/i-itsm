@@ -21,7 +21,7 @@ test('workflow 2: investigate, pause SLA, answer, monitor, resolve and verify wi
   await assignee.goto(incident.path);
   await assignee.getByRole('button', { name: 'Acknowledge', exact: true }).click();
   await reached(assignee, 'Acknowledged');
-  await expect(rail(assignee).getByText('Response met', { exact: true })).toBeVisible();
+  await expect(rail(assignee).getByText(/^Response met/)).toBeVisible();
   await assignee.getByRole('button', { name: 'Start work', exact: true }).click();
   await reached(assignee, 'In progress');
   const note = 'Confirmed PG-503 across all cards; checking the gateway connection pool.';
@@ -53,9 +53,7 @@ test('workflow 2: investigate, pause SLA, answer, monitor, resolve and verify wi
   await priya.getByRole('button', { name: 'Answer question', exact: true }).last().click();
   await expect(assignee.getByText(answer, { exact: true })).toBeVisible();
   await expect(assignee.getByText('SLA paused', { exact: true })).toHaveCount(0);
-  await expect(step(assignee, 'Resolved')).toContainText(
-    `Resolving · with ${incident.assignee.split(' ')[0]}`,
-  );
+  await expect(step(assignee, 'Resolved')).toContainText('Resolving · your turn');
 
   const vikram = await persona('vikram');
   await vikram.getByRole('link', { name: 'SLA monitor', exact: true }).click();
@@ -64,18 +62,17 @@ test('workflow 2: investigate, pause SLA, answer, monitor, resolve and verify wi
     'Breached, still open',
     'At risk now',
     'SLA compliance',
-    'Met / breached (all time)',
+    'SLA targets met',
   ]) {
     const tile = vikram
       .locator('dl > div')
       .filter({ has: vikram.getByText(label, { exact: true }) });
-    await expect(tile.locator('dd')).toHaveText(
-      label === 'SLA compliance'
-        ? /^\d+(\.\d+)?%$/
-        : label === 'Met / breached (all time)'
-          ? /^\d+ \/ \d+$/
-          : /^\d+$/,
+    await expect(tile.locator('dd').first()).toHaveText(
+      label === 'SLA compliance' ? /^\d+(\.\d+)?%$/ : /^\d+$/,
     );
+    if (label === 'SLA targets met') {
+      await expect(tile.locator('dd').nth(1)).toHaveText(/^\d+ breached · all time$/);
+    }
   }
   const watchlist = vikram.getByRole('region', { name: 'SLA watchlist', exact: true });
   await expect(

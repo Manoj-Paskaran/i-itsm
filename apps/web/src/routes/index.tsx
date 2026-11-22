@@ -22,7 +22,9 @@ import {
   useTechnicians,
 } from '@/lib/incidents';
 import {
+  escalationChipStyle,
   filterIncidents,
+  formatUnacknowledged,
   queueSearch,
   sortIncidents,
   tabCounts,
@@ -30,6 +32,7 @@ import {
   type QueueSort,
   type QueueTab,
 } from '@/lib/queue';
+import { useNow } from '@/lib/use-now';
 
 export const Route = createFileRoute('/')({ component: RoleHome });
 
@@ -227,8 +230,17 @@ function Home() {
   );
 }
 
+function UnacknowledgedElapsed({ assignedAt }: { assignedAt: string }) {
+  const now = useNow(1000);
+  return (
+    <span className="tabular"> · Not acknowledged · {formatUnacknowledged(assignedAt, now)}</span>
+  );
+}
+
 function Row({ incident, seesOthers }: { incident: IncidentSummary; seesOthers: boolean }) {
   const Icon = STATUS_ICON[incident.status];
+  const group = statusGroup(incident.status);
+  const escalation = group !== 'done' ? escalationChipStyle(incident.escalationLevel) : null;
   return (
     <li className="border-b border-border last:border-0 hover:bg-hover">
       <Link
@@ -239,7 +251,7 @@ function Row({ incident, seesOthers }: { incident: IncidentSummary; seesOthers: 
         <Icon
           size={16}
           strokeWidth={2}
-          className={`mt-0.5 shrink-0 ${STATUS_TEXT[statusGroup(incident.status)]}`}
+          className={`mt-0.5 shrink-0 ${STATUS_TEXT[group]}`}
           aria-label={STATUS_LABEL[incident.status]}
         />
         <div className="min-w-0 flex-1">
@@ -251,16 +263,29 @@ function Row({ incident, seesOthers }: { incident: IncidentSummary; seesOthers: 
             {incident.slaStatus === 'AT_RISK' || incident.slaStatus === 'BREACHED' ? (
               <SlaPill status={incident.slaStatus} />
             ) : null}
-            {incident.escalationLevel !== 'TECHNICIAN' && (
-              <span className="inline-flex h-6 items-center gap-1 rounded-md bg-high-subtle px-2 text-xs font-medium text-high-foreground">
+            {escalation && (
+              <span
+                className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium ${escalation.className}`}
+              >
                 <ArrowUpRight size={13} aria-hidden />
                 Escalated · {ESCALATION_LABEL[incident.escalationLevel]}
+                <span className="ml-0.5 inline-flex items-center gap-0.5" aria-hidden>
+                  {[1, 2, 3].map((step) => (
+                    <span
+                      key={step}
+                      className={`size-1.5 rounded-full bg-current ${step <= escalation.level ? '' : 'opacity-25'}`}
+                    />
+                  ))}
+                </span>
               </span>
             )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground tabular">
-            {incident.number} · {STATUS_LABEL[incident.status]} · {incident.service.name} · by{' '}
-            {incident.reporter.name}
+            {incident.number} · {STATUS_LABEL[incident.status]} · {incident.service.name}
+            {incident.status === 'ASSIGNED' && incident.assignedAt && (
+              <UnacknowledgedElapsed assignedAt={incident.assignedAt} />
+            )}{' '}
+            · by {incident.reporter.name}
             <span className="sm:hidden"> · {relativeAgo(incident.createdAt)}</span>
           </p>
         </div>

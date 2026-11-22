@@ -105,10 +105,17 @@ export class HttpIntelligenceAdapter implements IntelligencePort {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!response.ok) throw new Error(`ML sla-risk failed with ${response.status}`);
-      const { probability } = (await response.json()) as { probability?: unknown };
+      const { probability, source } = (await response.json()) as {
+        probability?: unknown;
+        source?: unknown;
+      };
+      // When the ML service answers from its own rules fallback, defer to the domain policy so
+      // priority, escalation weight and pause adjustments apply consistently.
+      if (source === 'rules') return this.fallback.slaRisk(incident, context);
       if (typeof probability !== 'number' || !(probability >= 0 && probability <= 1))
         throw new Error('ML sla-risk returned no probability');
-      const p = Math.round(probability * 100) / 100;
+      const adjusted = probability + SlaRiskPolicy.escalationWeight(factors.escalationLevel);
+      const p = Math.round(Math.min(0.99, Math.max(0.01, adjusted)) * 100) / 100;
       return {
         result: {
           probability: p,

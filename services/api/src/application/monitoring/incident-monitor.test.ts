@@ -41,16 +41,16 @@ describe('IncidentMonitor rules', () => {
   });
   it('sweepEscalatesUnacknowledgedP1WithDemoPolicy', async () => {
     const { clock, monitor, incidents, incident } = await setup('ASSIGNED');
-    clock.advance(Duration.ofSeconds(25));
+    clock.advance(Duration.ofSeconds(65));
     expect((await monitor.sweep()).escalations).toBe(1);
     expect((await incidents.findById(incident.id))?.escalationLevel()).toBe('TEAM_LEAD');
-    clock.advance(Duration.ofSeconds(20));
+    clock.advance(Duration.ofSeconds(30));
     expect((await monitor.sweep()).escalations).toBe(1);
     expect((await incidents.findById(incident.id))?.escalationLevel()).toBe('SYS_ADMIN');
   });
   it('sweepIgnoresAcknowledgedIncidents', async () => {
     const { clock, monitor } = await setup('ACKNOWLEDGED');
-    clock.advance(Duration.ofSeconds(45));
+    clock.advance(Duration.ofSeconds(125));
     expect((await monitor.sweep()).escalations).toBe(0);
   });
   it('overlappingSweepsShareOneRun', async () => {

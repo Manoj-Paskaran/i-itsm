@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { filterIncidents, queueSearch, sortIncidents, tabCounts } from './queue';
+import {
+  escalationChipStyle,
+  filterIncidents,
+  formatUnacknowledged,
+  queueSearch,
+  sortIncidents,
+  tabCounts,
+} from './queue';
 
 const row = (
   status: string,
@@ -38,4 +45,33 @@ describe('incident queue', () => {
       closed: 0,
       all: 1,
     }));
+  it('formatsUnacknowledgedTimeAsMinutesAndSeconds', () => {
+    const start = '2026-11-04T10:00:00Z';
+    expect(formatUnacknowledged(start, new Date('2026-11-04T09:59:55Z'))).toBe('0:00');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T10:00:05Z'))).toBe('0:05');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T10:00:38Z'))).toBe('0:38');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T10:01:02Z'))).toBe('1:02');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T10:59:59Z'))).toBe('59:59');
+  });
+  it('formatsUnacknowledgedTimeOverOneHourAsHoursAndMinutes', () => {
+    const start = '2026-11-04T10:00:00Z';
+    expect(formatUnacknowledged(start, new Date('2026-11-04T11:00:00Z'))).toBe('1h 0m');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T11:05:45Z'))).toBe('1h 5m');
+    expect(formatUnacknowledged(start, new Date('2026-11-04T12:30:00Z'))).toBe('2h 30m');
+  });
+  it('mapsEscalationLevelsToProgressiveChipStylesAndPips', () => {
+    expect(escalationChipStyle('TECHNICIAN')).toBeNull();
+    expect(escalationChipStyle('TEAM_LEAD')).toEqual({
+      level: 1,
+      className: 'bg-high-subtle text-high-foreground',
+    });
+    expect(escalationChipStyle('SYS_ADMIN')).toEqual({
+      level: 2,
+      className: 'bg-high-subtle text-high-foreground ring-1 ring-inset ring-high',
+    });
+    expect(escalationChipStyle('IT_MANAGER')).toEqual({
+      level: 3,
+      className: 'bg-critical-subtle text-critical-foreground',
+    });
+  });
 });

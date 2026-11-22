@@ -11,7 +11,7 @@ import {
 test('workflow 3: detect duplicates, escalate through the demo chain, reassign and switch strategies', async ({
   persona,
 }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(220_000);
   const priya = await persona('priya');
   await fillReport(priya, 'Payment Gateway checkout outage: every card declined');
   const original = await sendReport(priya);
@@ -25,7 +25,7 @@ test('workflow 3: detect duplicates, escalate through the demo chain, reassign a
   await expect(warning.getByText('Advisory', { exact: true })).toBeVisible();
   const duplicate = await sendReport(priya);
 
-  // Script step 2 before step 3: watch the chip climb while the 20/40/60 s demo policy runs.
+  // Script step 2 before step 3: watch the chip climb while the 60/90/120 s demo policy runs.
   const arjun = await persona('arjun');
   await arjun.getByRole('link', { name: 'All incidents', exact: true }).first().click();
   await arjun.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('P1');
@@ -35,9 +35,9 @@ test('workflow 3: detect duplicates, escalate through the demo chain, reassign a
     }),
   });
   await expect(originalRow).toBeVisible();
-  await expect(originalRow).toContainText('Escalated · Team lead', { timeout: 35_000 });
-  await expect(originalRow).toContainText('Escalated · System admin', { timeout: 25_000 });
-  await expect(originalRow).toContainText('Escalated · IT manager', { timeout: 25_000 });
+  await expect(originalRow).toContainText('Escalated · Team lead', { timeout: 80_000 });
+  await expect(originalRow).toContainText('Escalated · System admin', { timeout: 45_000 });
+  await expect(originalRow).toContainText('Escalated · IT manager', { timeout: 45_000 });
   await originalRow.getByRole('link').click();
   await expect(arjun.getByText('Escalated to IT manager', { exact: true })).toBeVisible();
 
@@ -99,13 +99,17 @@ test('workflow 3: detect duplicates, escalate through the demo chain, reassign a
   await divya.getByRole('button', { name: 'Reassign', exact: true }).click();
   const context = divya.getByRole('complementary', { name: 'Incident context' });
   await expect(context.getByText('Suggestions · advisory', { exact: true })).toBeVisible();
-  const candidate = context
-    .getByRole('listitem')
-    .filter({ has: divya.getByRole('button', { name: /^Assign to / }) })
-    .first();
+  const assignOther = divya.getByRole('button', {
+    name: /^Assign to (?!yourself$)/,
+    disabled: false,
+  });
+  const candidate = context.getByRole('listitem').filter({ has: assignOther }).first();
   await expect(candidate).toContainText(/match \d+%/);
   await expect(candidate).toContainText(/skill|capacity|load|experience|rotation/i);
-  const assignButton = candidate.getByRole('button', { name: /^Assign to / });
+  const assignButton = candidate.getByRole('button', {
+    name: /^Assign to (?!yourself$)/,
+    disabled: false,
+  });
   const nextName = (await assignButton.innerText()).replace('Assign to ', '');
   // The button shows only the first name; the Assignee section shows the full name.
   expect(nextName).not.toBe(original.assignee.split(' ')[0]);

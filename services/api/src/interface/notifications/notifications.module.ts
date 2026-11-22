@@ -12,9 +12,11 @@ import {
   INCIDENT_REPOSITORY,
   USER_REPOSITORY,
   NOTIFICATION_REPOSITORY,
+  TOKEN_SERVICE,
   type IncidentRepository,
   type UserRepository,
   type NotificationRepository,
+  type TokenService,
 } from '../../ports/index.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { IncidentsModule } from '../incidents/incidents.module.js';
@@ -42,7 +44,11 @@ class Subscriptions implements OnModuleInit {
         new InAppChannel(repo, gateway),
       inject: [NOTIFICATION_REPOSITORY, RealtimeGateway],
     },
-    { provide: EmailChannel, useFactory: (env: Env) => new EmailChannel(env), inject: [ENV] },
+    {
+      provide: EmailChannel,
+      useFactory: (env: Env, tokens: TokenService) => new EmailChannel(env, undefined, tokens),
+      inject: [ENV, TOKEN_SERVICE],
+    },
     {
       provide: NotificationDispatcher,
       useFactory: (

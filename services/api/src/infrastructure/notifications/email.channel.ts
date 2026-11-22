@@ -2,16 +2,11 @@ import { Logger } from '@nestjs/common';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type { NotificationMessage } from '../../application/notifications/notification-message.js';
 import { NetworkFailureException } from '../../domain/exceptions/index.js';
-import type { NotificationChannel } from '../../ports/index.js';
+import type { NotificationChannel, TokenService } from '../../ports/index.js';
 import type { Env } from '../config/env.js';
+import { renderNotificationEmail } from './email-template.js';
 import { RecipientAllowlist } from './recipient-allowlist.js';
-const escapeHtml = (s: string) =>
-  s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+
 export class EmailChannel implements NotificationChannel {
   readonly kind = 'EMAIL' as const;
   private readonly logger = new Logger(EmailChannel.name);
@@ -20,6 +15,7 @@ export class EmailChannel implements NotificationChannel {
   constructor(
     private readonly env: Env,
     deliver?: (options: SendMailOptions) => Promise<unknown>,
+    private readonly tokens?: TokenService,
   ) {
     this.allowlist = new RecipientAllowlist(env.EMAIL_ALLOWLIST);
     const transport = nodemailer.createTransport(env.SMTP_URL);
@@ -30,17 +26,22 @@ export class EmailChannel implements NotificationChannel {
       this.logger.debug('Skipped email: recipient is not on EMAIL_ALLOWLIST');
       return;
     }
+    const base = this.env.WEB_ORIGIN.replace(/\/$/, '');
     const link = message.incidentId
-      ? `${this.env.WEB_ORIGIN.replace(/\/$/, '')}/incidents/${message.incidentId}`
+      ? this.tokens
+        ? `${base}/api/auth/email-link?token=${encodeURIComponent(
+            await this.tokens.issueEmailLink(message.recipientId, message.incidentId),
+          )}`
+        : `${base}/incidents/${message.incidentId}`
       : null;
-    const details = [message.body, message.incidentNumber, link].filter(Boolean).join('\n\n');
+    const { subject, text, html } = renderNotificationEmail(message, link);
     try {
       await this.deliver({
         from: this.env.MAIL_FROM,
         to: message.recipientEmail,
-        subject: message.title,
-        text: details,
-        html: `<p>${escapeHtml(message.body)}</p>${message.incidentNumber ? `<p>${escapeHtml(message.incidentNumber)}</p>` : ''}${link ? `<p><a href="${escapeHtml(link)}">View incident</a></p>` : ''}`,
+        subject,
+        text,
+        html,
       });
     } catch (error) {
       throw new NetworkFailureException('smtp', error);

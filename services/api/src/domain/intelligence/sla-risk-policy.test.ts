@@ -55,12 +55,32 @@ describe('SlaRiskPolicy', () => {
       reasons: ['50% of the resolution window used'],
     });
   });
-  it('addsWeightForEscalation', () =>
-    expect(policy.estimate({ ...base, escalationLevel: EscalationLevel.TEAM_LEAD })).toEqual({
-      probability: 0.65,
-      level: 'MEDIUM',
-      reasons: ['50% of the resolution window used', 'already escalated'],
-    }));
+  it.each([
+    [EscalationLevel.TECHNICIAN, 0],
+    [EscalationLevel.TEAM_LEAD, 0.1],
+    [EscalationLevel.SYS_ADMIN, 0.2],
+    [EscalationLevel.IT_MANAGER, 0.3],
+  ] as const)('returnsEscalationWeightPerLevel (%s)', (level, weight) =>
+    expect(SlaRiskPolicy.escalationWeight(level)).toBe(weight),
+  );
+  it.each([
+    [EscalationLevel.TECHNICIAN, 0.55],
+    [EscalationLevel.TEAM_LEAD, 0.65],
+    [EscalationLevel.SYS_ADMIN, 0.75],
+    [EscalationLevel.IT_MANAGER, 0.85],
+  ] as const)('weightsRiskByEscalationLevel (%s)', (escalationLevel, probability) =>
+    expect(policy.estimate({ ...base, escalationLevel }).probability).toBe(probability),
+  );
+  it.each([
+    [EscalationLevel.TEAM_LEAD, 'escalated to team lead'],
+    [EscalationLevel.SYS_ADMIN, 'escalated to system admin'],
+    [EscalationLevel.IT_MANAGER, 'escalated to IT manager'],
+  ] as const)('namesTheEscalationLevelInTheReasons (%s)', (escalationLevel, reason) =>
+    expect(policy.estimate({ ...base, escalationLevel }).reasons).toEqual([
+      '50% of the resolution window used',
+      reason,
+    ]),
+  );
   it('addsWeightForNoAssignee', () =>
     expect(policy.estimate({ ...base, unassigned: true })).toEqual({
       probability: 0.65,

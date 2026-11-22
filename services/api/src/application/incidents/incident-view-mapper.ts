@@ -19,15 +19,17 @@ export class IncidentViewMapper {
   ) {}
   async detail(
     incident: Incident,
+    canSeeNote: (authorId: UserId | null) => boolean,
     rationale: readonly string[] = [],
     reasons: readonly string[] = [],
   ): Promise<IncidentDetail> {
     const s = incident.toSnapshot();
+    const notes = s.notes.filter((n) => canSeeNote(n.authorId));
     const ids = new Set<UserId>();
     for (const id of [
       s.reporterId,
       s.assigneeId,
-      ...s.notes.map((n) => n.authorId),
+      ...notes.map((n) => n.authorId),
       ...s.infoRequests.map((q) => q.askedBy),
       s.resolution?.resolvedBy,
       s.closure?.closedBy,
@@ -67,6 +69,7 @@ export class IncidentViewMapper {
       reporter: person(s.reporterId)!,
       assignee: person(s.assigneeId),
       createdAt: s.createdAt,
+      assignedAt: s.assignedAt,
       slaStatus: incident.slaStatus(this.clock.now()),
       escalationLevel: s.escalationLevel,
       impact: s.impact,
@@ -77,7 +80,7 @@ export class IncidentViewMapper {
         : null,
       priorityRationale: [...rationale],
       assignmentReasons: [...reasons],
-      notes: s.notes.map((n) => ({ author: person(n.authorId)!, text: n.text, at: n.at })),
+      notes: notes.map((n) => ({ author: person(n.authorId)!, text: n.text, at: n.at })),
       infoRequests: s.infoRequests.map((q) => ({
         question: q.question,
         askedBy: person(q.askedBy)!,
@@ -115,7 +118,7 @@ export class IncidentViewMapper {
     };
   }
   async summary(incident: Incident): Promise<IncidentSummary> {
-    const d = await this.detail(incident);
+    const d = await this.detail(incident, () => false);
     return {
       id: d.id,
       number: d.number,
@@ -127,6 +130,7 @@ export class IncidentViewMapper {
       reporter: d.reporter,
       assignee: d.assignee,
       createdAt: d.createdAt,
+      assignedAt: d.assignedAt,
       slaStatus: d.slaStatus,
       escalationLevel: d.escalationLevel,
     };

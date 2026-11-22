@@ -25,7 +25,14 @@ import {
   Tag,
   UserCheck,
 } from 'lucide-react';
-import { useRef, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { ApiError } from '@/lib/api';
 import {
   ACTION_LABELS,
@@ -83,6 +90,70 @@ const auditIcons: Record<string, typeof Circle> = {
 const button =
   'inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-base disabled:opacity-50 max-sm:min-h-10';
 const primary = 'bg-primary font-semibold text-primary-foreground hover:bg-primary-hover';
+const secondaryButton = 'border border-border bg-background font-medium hover:bg-hover';
+
+type LiveEvent =
+  | { kind: 'note'; key: string; at: string; authorId: string; authorName: string }
+  | {
+      kind: 'audit';
+      key: string;
+      at: string;
+      action: string;
+      actorId: string | null;
+      actorName: string | null;
+      description: string;
+    };
+
+export function liveEventKey(
+  event:
+    { kind: 'note'; at: string; authorId: string } | { kind: 'audit'; at: string; action: string },
+) {
+  return event.kind === 'note'
+    ? `n|${event.at}|${event.authorId}`
+    : `a|${event.at}|${event.action}`;
+}
+
+export function liveUpdateMessage(
+  event: LiveEvent,
+  detail: IncidentDetail,
+  viewerId?: string,
+): string {
+  const firstName = (name: string | null | undefined) => name?.split(' ')[0] ?? '';
+  if (event.kind === 'note') return `${firstName(event.authorName)} added a note`;
+  const actor = firstName(event.actorName);
+  switch (event.action) {
+    case 'InfoProvided':
+      return actor
+        ? viewerId && viewerId === detail.assignee?.id
+          ? `${actor} answered your question`
+          : `${actor} answered the question`
+        : 'Information provided';
+    case 'InfoRequested':
+      return actor ? `${actor} asked for information` : 'Information requested';
+    case 'IncidentResolved':
+      return actor ? `${actor} resolved this incident` : 'Incident resolved';
+    case 'IncidentVerified':
+      return actor ? `${actor} confirmed the fix` : 'Fix confirmed';
+    case 'IncidentReopened':
+      return actor ? `${actor} reopened this incident` : 'Incident reopened';
+    case 'IncidentClosed':
+      return actor ? `${actor} closed this incident` : 'Incident closed';
+    case 'IncidentAcknowledged':
+      return actor ? `${actor} acknowledged this incident` : 'Incident acknowledged';
+    case 'WorkStarted':
+      return actor ? `${actor} started work` : 'Work started';
+    case 'FeedbackGiven':
+      return actor ? `${actor} sent feedback` : 'Feedback received';
+    case 'SlaWarningRaised':
+      return 'SLA is now at risk';
+    case 'SlaBreached':
+      return 'SLA deadline breached';
+    case 'IncidentEscalated':
+      return 'Incident escalated';
+    default:
+      return humanizeAudit(event.description, detail.number, event.actorName ?? undefined);
+  }
+}
 export function IncidentWorkspace({ incidentId }: { incidentId: string }) {
   const query = useIncident(incidentId);
   if (query.isLoading)
@@ -131,14 +202,88 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
   const insights = useWorkspaceInsights(detail);
   const { user } = useAuth();
   const [form, setForm] = useState<FormAction | null>(null);
+  const [focusFeedback, setFocusFeedback] = useState(false);
+  const [liveCue, setLiveCue] = useState<{
+    key: string;
+    message: string;
+    highlighted: boolean;
+  } | null>(null);
+  const seenEventsRef = useRef<Set<string> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!audit.data) return;
+    const current: LiveEvent[] = [
+      ...audit.data
+        .filter((entry) => entry.action !== 'NoteAdded')
+        .map((entry) => ({
+          kind: 'audit' as const,
+          key: liveEventKey({ kind: 'audit', at: entry.at, action: entry.action }),
+          at: entry.at,
+          action: entry.action,
+          actorId: entry.actor?.id ?? null,
+          actorName: entry.actor?.name ?? null,
+          description: entry.description,
+        })),
+      ...detail.notes.map((entry) => ({
+        kind: 'note' as const,
+        key: liveEventKey({ kind: 'note', at: entry.at, authorId: entry.author.id }),
+        at: entry.at,
+        authorId: entry.author.id,
+        authorName: entry.author.name,
+      })),
+    ];
+    if (!seenEventsRef.current) {
+      seenEventsRef.current = new Set(current.map((event) => event.key));
+      return;
+    }
+    const added = current.filter((event) => !seenEventsRef.current!.has(event.key));
+    for (const event of added) seenEventsRef.current.add(event.key);
+    const external = added
+      .filter((event) =>
+        event.kind === 'note' ? event.authorId !== user?.id : event.actorId !== user?.id,
+      )
+      .sort((a, b) => a.at.localeCompare(b.at));
+    const latest = external.at(-1);
+    if (!latest) return;
+    const message = liveUpdateMessage(latest, detail, user?.id);
+    queueMicrotask(() => {
+      if (mountedRef.current) setLiveCue({ key: latest.key, message, highlighted: true });
+    });
+  }, [audit.data, detail, user?.id]);
+  const liveCueKey = liveCue?.key ?? null;
+  useEffect(() => {
+    if (!liveCueKey) return;
+    const unhighlightTimer = setTimeout(() => {
+      setLiveCue((prev) => (prev?.key === liveCueKey ? { ...prev, highlighted: false } : prev));
+    }, 2000);
+    const hideTimer = setTimeout(() => {
+      setLiveCue((prev) => (prev?.key === liveCueKey ? null : prev));
+    }, 4500);
+    return () => {
+      clearTimeout(unhighlightTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [liveCueKey]);
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    formRef.current?.scrollIntoView({ block: 'nearest' });
+    formRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [form]);
+  const clearFocusFeedback = useCallback(() => setFocusFeedback(false), []);
   const [text, setText] = useState('');
   const [rootCause, setRootCause] = useState('');
   const mainAction = primaryAction(detail.allowedActions);
   const secondary = secondaryActions(detail.allowedActions);
+  const isDuplicate = detail.closure?.reason === 'DUPLICATE';
+  const feedbackPending =
+    detail.status === 'VERIFIED' &&
+    !detail.feedback &&
+    detail.allowedActions.includes('giveFeedback');
   const sidePanelAction = detail.allowedActions.some(
     (action) => action === 'assign' || action === 'closeAsDuplicate',
   );
@@ -153,7 +298,11 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
       setText('');
       setRootCause('');
       setForm(form === action ? null : (action as FormAction));
-    } else mutation.mutate({ action: action as 'acknowledge' | 'startWork' | 'verify' | 'close' });
+    } else
+      mutation.mutate(
+        { action: action as 'acknowledge' | 'startWork' | 'verify' | 'close' },
+        action === 'verify' ? { onSuccess: () => setFocusFeedback(true) } : undefined,
+      );
   }
   function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -202,12 +351,13 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
           <div className="flex max-w-full flex-wrap gap-2">
             {[...secondary, ...(mainAction ? [mainAction] : [])].map((action) => {
               const Icon = icons[action];
+              const isPrimary = action === mainAction && !(action === 'close' && feedbackPending);
               return (
                 <button
                   key={action}
                   disabled={mutation.isPending}
                   onClick={() => choose(action)}
-                  className={`${button} ${action === mainAction ? primary : 'border border-border bg-background font-medium hover:bg-hover'}`}
+                  className={`${button} ${isPrimary ? primary : secondaryButton}`}
                 >
                   <Icon size={15} strokeWidth={2} aria-hidden />
                   {mutation.isPending && mutation.variables?.action === action
@@ -231,10 +381,10 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StatusPill status={detail.status} duplicate={detail.closure?.reason === 'DUPLICATE'} />
+          <StatusPill status={detail.status} duplicate={isDuplicate} />
           <PriorityChip priority={detail.priority} />
-          {detail.slaStatus && <SlaPill status={detail.slaStatus} />}
-          {detail.escalationLevel !== 'TECHNICIAN' && (
+          {!isDuplicate && detail.slaStatus && <SlaPill status={detail.slaStatus} />}
+          {!isDuplicate && detail.escalationLevel !== 'TECHNICIAN' && (
             <span className={`${chip} border-transparent bg-high-subtle text-high-foreground`}>
               <ArrowUpRight size={14} strokeWidth={2} aria-hidden />
               Escalated to {ESCALATION_LABEL[detail.escalationLevel]}
@@ -394,10 +544,30 @@ function Workspace({ detail }: { detail: IncidentDetail }) {
               </div>
             </section>
           )}
-          <Feedback detail={detail} />
-          <Activity detail={detail} />
+          <Feedback
+            detail={detail}
+            focusPrompt={focusFeedback}
+            onFocusHandled={clearFocusFeedback}
+          />
+          <Activity
+            detail={detail}
+            highlightedEventKey={liveCue?.highlighted ? liveCue.key : null}
+          />
         </div>
         <ContextPanel detail={detail} />
+      </div>
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="pointer-events-none fixed right-6 bottom-6 z-40 max-sm:right-4 max-sm:bottom-4"
+      >
+        {liveCue && (
+          <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm font-medium text-foreground shadow-pop">
+            <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden />
+            <span>{liveCue.message}</span>
+          </div>
+        )}
       </div>
     </>
   );
@@ -409,7 +579,32 @@ const TONE_FILL = {
   waiting: 'bg-fill-waiting',
   neutral: 'bg-fill-done',
 };
-function Activity({ detail }: { detail: IncidentDetail }) {
+function renderAuditDescription(action: string, text: string, detail: IncidentDetail) {
+  const dup = detail.closure?.reason === 'DUPLICATE' ? detail.closure.duplicateOf : null;
+  if (action !== 'IncidentClosed' || !dup) return text;
+  const index = text.indexOf(dup.number);
+  if (index === -1) return text;
+  return (
+    <>
+      {text.slice(0, index)}
+      <Link
+        to="/incidents/$incidentId"
+        params={{ incidentId: dup.id }}
+        className="font-medium underline underline-offset-2 hover:text-primary tabular"
+      >
+        {dup.number}
+      </Link>
+      {text.slice(index + dup.number.length)}
+    </>
+  );
+}
+function Activity({
+  detail,
+  highlightedEventKey = null,
+}: {
+  detail: IncidentDetail;
+  highlightedEventKey?: string | null;
+}) {
   const audit = useIncidentAudit(detail.id);
   const mutation = useIncidentAction(detail.id);
   const now = useNow(60000);
@@ -507,10 +702,18 @@ function Activity({ detail }: { detail: IncidentDetail }) {
                 {formatClock(at, now)}
               </time>
             );
-            if (event.kind === 'note')
+            if (event.kind === 'note') {
+              const highlighted =
+                highlightedEventKey ===
+                liveEventKey({ kind: 'note', at: event.at, authorId: event.entry.author.id });
               return (
-                <li key={`n-${event.at}-${i}`} className="relative flex gap-3 py-2">
-                  <span className="relative grid size-6 shrink-0 place-items-center rounded-full bg-fill-done text-fill-foreground ring-4 ring-background">
+                <li
+                  key={`n-${event.at}-${i}`}
+                  className={`relative -mx-2 flex gap-3 rounded-md px-2 py-2 transition-colors duration-500 motion-reduce:transition-none ${highlighted ? 'bg-primary-subtle' : ''}`}
+                >
+                  <span
+                    className={`relative grid size-6 shrink-0 place-items-center rounded-full bg-fill-done text-fill-foreground ring-4 ${highlighted ? 'ring-primary-subtle' : 'ring-background'}`}
+                  >
                     <StickyNote size={13} strokeWidth={2} aria-hidden />
                   </span>
                   <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
@@ -525,19 +728,32 @@ function Activity({ detail }: { detail: IncidentDetail }) {
                   </div>
                 </li>
               );
+            }
             const entry = event.entry;
             const Icon = auditIcons[entry.action] ?? CircleDot;
             const changed =
               entry.toStatus && entry.fromStatus && entry.toStatus !== entry.fromStatus;
+            const highlighted =
+              highlightedEventKey ===
+              liveEventKey({ kind: 'audit', at: event.at, action: entry.action });
             return (
-              <li key={`a-${event.at}-${i}`} className="relative flex gap-3 py-2">
+              <li
+                key={`a-${event.at}-${i}`}
+                className={`relative -mx-2 flex gap-3 rounded-md px-2 py-2 transition-colors duration-500 motion-reduce:transition-none ${highlighted ? 'bg-primary-subtle' : ''}`}
+              >
                 <span
-                  className={`relative grid size-6 shrink-0 place-items-center rounded-full text-fill-foreground ring-4 ring-background ${TONE_FILL[activityTone(entry.action)]}`}
+                  className={`relative grid size-6 shrink-0 place-items-center rounded-full text-fill-foreground ring-4 ${highlighted ? 'ring-primary-subtle' : 'ring-background'} ${TONE_FILL[activityTone(entry.action)]}`}
                 >
                   <Icon size={13} strokeWidth={2} aria-hidden />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 pt-0.5">
-                  <span>{humanizeAudit(entry.description, detail.number, entry.actor?.name)}</span>
+                  <span>
+                    {renderAuditDescription(
+                      entry.action,
+                      humanizeAudit(entry.description, detail.number, entry.actor?.name),
+                      detail,
+                    )}
+                  </span>
                   {changed && entry.toStatus && (
                     <StatusPill
                       status={entry.toStatus}
@@ -565,10 +781,31 @@ function Activity({ detail }: { detail: IncidentDetail }) {
 }
 
 /** The reporter rates a verified or closed incident once (1–5 plus an optional comment). */
-function Feedback({ detail }: { detail: IncidentDetail }) {
+function Feedback({
+  detail,
+  focusPrompt = false,
+  onFocusHandled,
+}: {
+  detail: IncidentDetail;
+  focusPrompt?: boolean;
+  onFocusHandled?: () => void;
+}) {
   const mutation = useIncidentAction(detail.id);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const sectionRef = useRef<HTMLElement>(null);
+  const firstStarRef = useRef<HTMLInputElement>(null);
+  const canGiveFeedback = !detail.feedback && detail.allowedActions.includes('giveFeedback');
+  useEffect(() => {
+    if (!focusPrompt || !canGiveFeedback) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    sectionRef.current?.scrollIntoView?.({
+      behavior: reduced ? 'auto' : 'smooth',
+      block: 'center',
+    });
+    firstStarRef.current?.focus({ preventScroll: true });
+    onFocusHandled?.();
+  }, [focusPrompt, canGiveFeedback, onFocusHandled]);
   if (detail.feedback)
     return (
       <section aria-labelledby="feedback">
@@ -581,9 +818,9 @@ function Feedback({ detail }: { detail: IncidentDetail }) {
         </div>
       </section>
     );
-  if (!detail.allowedActions.includes('giveFeedback')) return null;
+  if (!canGiveFeedback) return null;
   return (
-    <section aria-labelledby="feedback">
+    <section ref={sectionRef} aria-labelledby="feedback">
       <h2 id="feedback" className="mb-2 text-sm font-semibold">
         How did we do?
       </h2>
@@ -605,6 +842,7 @@ function Feedback({ detail }: { detail: IncidentDetail }) {
             {[1, 2, 3, 4, 5].map((n) => (
               <label key={n} className="cursor-pointer">
                 <input
+                  ref={n === 1 ? firstStarRef : undefined}
                   type="radio"
                   name="rating"
                   value={n}

@@ -107,10 +107,16 @@ export function StatusPill({
 }) {
   const Icon = STATUS_ICON[status];
   const group = statusGroup(status);
+  const tone =
+    status === 'RESOLVED'
+      ? small
+        ? 'bg-success-subtle text-success-foreground'
+        : 'bg-fill-success text-fill-foreground'
+      : small
+        ? SMALL_FILL[group]
+        : `${STATUS_FILL[group]} text-fill-foreground`;
   return (
-    <span
-      className={`${pill} ${small ? `h-5 px-2 text-2xs ${SMALL_FILL[group]}` : `h-6 px-2.5 text-xs ${STATUS_FILL[group]} text-fill-foreground`}`}
-    >
+    <span className={`${pill} ${small ? 'h-5 px-2 text-2xs' : 'h-6 px-2.5 text-xs'} ${tone}`}>
       <Icon size={small ? 12 : 14} strokeWidth={2} aria-hidden />
       {duplicate && status === 'CLOSED' ? 'Closed as duplicate' : STATUS_LABEL[status]}
     </span>
@@ -118,17 +124,21 @@ export function StatusPill({
 }
 
 const SLA_STYLE = {
-  ON_TRACK: ['SLA on track', CircleCheck, 'bg-fill-success'],
-  AT_RISK: ['SLA at risk', AlarmClock, 'bg-fill-waiting'],
-  BREACHED: ['SLA breached', AlarmClockOff, 'bg-fill-critical'],
-  MET: ['SLA met', CircleCheck, 'bg-fill-success'],
-  PAUSED: ['SLA paused', Pause, 'bg-fill-done'],
+  ON_TRACK: ['SLA on track', CircleCheck, 'bg-fill-success text-fill-foreground'],
+  AT_RISK: ['SLA at risk', AlarmClock, 'bg-fill-waiting text-fill-foreground'],
+  BREACHED: ['SLA breached', AlarmClockOff, 'bg-fill-critical text-fill-foreground'],
+  MET: ['SLA met', CircleCheck, 'bg-fill-success text-fill-foreground'],
+  PAUSED: [
+    'SLA paused',
+    Pause,
+    'border border-warning/40 bg-warning-subtle text-warning-foreground',
+  ],
 } as const;
 
 export function SlaPill({ status }: { status: NonNullable<IncidentDetail['slaStatus']> }) {
-  const [label, Icon, fill] = SLA_STYLE[status];
+  const [label, Icon, tone] = SLA_STYLE[status];
   return (
-    <span className={`${pill} h-6 px-2.5 text-xs ${fill} text-fill-foreground`}>
+    <span className={`${pill} h-6 px-2.5 text-xs ${tone}`}>
       <Icon size={14} strokeWidth={2} aria-hidden />
       {label}
     </span>

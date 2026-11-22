@@ -1,10 +1,62 @@
 # I-ITSM — Intelligent IT Service Management & Incident Resolution System
 
-CS F213 / MAC F212 OOP project, Semester I 2026-27.
+CS F213 / MAC F212 Object-Oriented Programming project, Semester I 2026-27 (Group 64).
 
-Incident lifecycle management (report → classify → prioritise → assign → resolve → close) with SLA monitoring, auditing, reporting, and ML/Gemini-assisted classification, duplicate detection and incident intake.
+I-ITSM handles the whole life of an IT incident: an employee reports it, it is classified and
+prioritised, assigned to the right technician, tracked against its SLA, escalated when nobody
+picks it up, and closed with an audit trail. It also checks new reports for duplicates and offers
+a chat intake that turns a plain-language complaint into a structured incident.
 
-Team: Manoj Kumar Paskaran, Aditya Jain.
+- **Report:** [docs/report.pdf](docs/report.pdf)
+- **Assignment specification:** [docs/spec/OOP_S1_2026-2027_Project.pdf](docs/spec/OOP_S1_2026-2027_Project.pdf)
+
+## Team
+
+Manoj Kumar Paskaran · Aitha Sreekar · Aditya Anand Jain · Tejas Chhabra Solanki
+
+## Object-oriented design at a glance
+
+The domain layer (`services/api/src/domain`) is plain TypeScript with no framework, database,
+HTTP or AI-SDK imports. ESLint enforces this rule. Infrastructure plugs in through the interfaces in
+`services/api/src/ports`.
+
+| Pattern | Where | What it does |
+|---|---|---|
+| State | `domain/incidents/state` | Each lifecycle state decides which transitions and actions are allowed |
+| Strategy | `domain/priority`, `domain/assignment` | Swappable priority algorithms (weighted score, matrix) and technician assignment (skill, load, experience, round-robin, composite) |
+| Chain of Responsibility | `domain/escalation` | Technician → Team Lead → System Admin → IT Manager escalation |
+| Observer | `domain/events` | Domain events (SLA warning, breach, escalation) drive notifications and audit |
+| Factory | `IncidentFactory`, `EscalationChainFactory` | Build valid aggregates and chains in one place |
+| Repository / Adapter | `ports/` + `infrastructure/` | Persistence, e-mail, ML service and job queue behind interfaces |
+
+Custom exceptions live in `domain/exceptions`. Every business rule and exception path has a unit test.
+
+## Architecture
+
+| Path | Purpose |
+|---|---|
+| `apps/web` | React + TypeScript progressive web app for all roles |
+| `services/api` | NestJS API: domain model, business rules, persistence, jobs, WebSockets, MCP endpoint |
+| `services/ml` | Python intelligence service (FastAPI): classifier, SLA-risk model, embeddings, Gemini intake |
+| `packages/contracts` | Zod schemas shared by the web app and the API |
+| `infra` | Docker Compose for PostgreSQL + pgvector, Valkey, Mailpit, Grafana |
+| `e2e` | Playwright end-to-end tests |
+| `docs` | Assignment specification and project report |
+
+Every machine-learning or Gemini call has a rule-based fallback, so the core workflows run
+without an API key.
+
+## Demo accounts
+
+After seeding, every account uses the password `demo1234`.
+
+| Role | Accounts |
+|---|---|
+| Employee | `priya@itsm.demo`, `rahul@itsm.demo`, `neha@itsm.demo`, `arun@itsm.demo` |
+| Technician | `asha@itsm.demo`, `ben@itsm.demo`, `farah@itsm.demo`, `gopal@itsm.demo`, `irene@itsm.demo` |
+| Team Lead | `chen@itsm.demo`, `divya@itsm.demo` |
+| System Admin | `arjun@itsm.demo`, `sara@itsm.demo` |
+| IT Manager | `kavya@itsm.demo`, `vikram@itsm.demo` |
 
 ## Prerequisites
 
@@ -85,13 +137,8 @@ pnpm format:check
 
 pnpm enforces a 24-hour minimum release age for new dependencies.
 
-## Repo layout
+## Data sources
 
-| Path | Purpose |
-|---|---|
-| `apps/web` | React web application and PWA |
-| `services/api` | NestJS API and core business logic |
-| `services/ml` | Python intelligence service |
-| `packages/contracts` | Shared Zod API contracts |
-| `infra` | Local infrastructure and deployment configuration |
-| `docs` | Assignment specification and project report |
+- **Ticket classifier:** [KameronB/synthetic-it-callcenter-tickets](https://huggingface.co/datasets/KameronB/synthetic-it-callcenter-tickets) (Apache-2.0), plus locally generated templates. Raw data is downloaded by script and not committed; see `services/ml/data/README.md`.
+- **SLA-risk model:** UCI dataset 498, *Incident Management Process Enriched Event Log*, DOI [10.24432/C57S4H](https://doi.org/10.24432/C57S4H) (CC BY 4.0).
+- **Embeddings:** [BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5).

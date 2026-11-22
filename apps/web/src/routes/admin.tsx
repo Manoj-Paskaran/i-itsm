@@ -3,6 +3,7 @@ import { useRef, useState, type MouseEventHandler, type ReactNode } from 'react'
 import { AppShell } from '@/components/app-shell';
 import {
   strategyLabel,
+  strategySavedMessage,
   useAdminCategories,
   useAdminServices,
   useAdminUsers,
@@ -211,6 +212,10 @@ const Active = ({ on }: { on: boolean }) => (
 function Strategies() {
   const strategies = useStrategies();
   const write = useAdminWrite();
+  const [lastWrite, setLastWrite] = useState<{
+    key: 'priority' | 'assignment';
+    id: string;
+  } | null>(null);
   if (strategies.isError)
     return (
       <p role="alert" className="text-sm text-critical-foreground">
@@ -259,13 +264,14 @@ function Strategies() {
                   value={id}
                   checked={strategies.data[key].active === id}
                   disabled={write.isPending}
-                  onChange={() =>
+                  onChange={() => {
+                    setLastWrite({ key, id });
                     write.mutate({
                       path: '/api/admin/strategies',
                       method: 'PUT',
                       body: { [key]: id },
-                    })
-                  }
+                    });
+                  }}
                   className="mt-0.5 accent-[var(--primary)]"
                 />
                 <span className="grid gap-0.5">
@@ -275,20 +281,20 @@ function Strategies() {
               </label>
             ))}
           </div>
+          {lastWrite?.key === key && (write.isPending || write.isSuccess) && (
+            <p role="status" className="mt-3 text-xs text-muted-foreground">
+              {write.isPending
+                ? 'Saving strategy…'
+                : strategySavedMessage(lastWrite.key, lastWrite.id)}
+            </p>
+          )}
+          {lastWrite?.key === key && write.isError && (
+            <p role="alert" className="mt-3 text-xs text-critical-foreground">
+              {write.error.message}
+            </p>
+          )}
         </fieldset>
       ))}
-      <p role="status" className="text-xs text-muted-foreground lg:col-span-2">
-        {write.isPending
-          ? 'Saving strategy…'
-          : write.isSuccess
-            ? 'Strategy saved. It will apply to new incidents.'
-            : ''}
-      </p>
-      {write.isError && (
-        <p role="alert" className="text-xs text-critical-foreground">
-          {write.error.message}
-        </p>
-      )}
     </div>
   );
 }

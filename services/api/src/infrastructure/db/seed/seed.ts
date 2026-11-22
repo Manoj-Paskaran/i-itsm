@@ -9,6 +9,7 @@ import {
   TechnicianLoad,
 } from '../../../domain/assignment/index.js';
 import { Category, ItService } from '../../../domain/catalog/index.js';
+import { EscalationChainFactory, EscalationPolicy } from '../../../domain/escalation/index.js';
 import { Actor, IncidentFactory, type Incident } from '../../../domain/incidents/index.js';
 import { PriorityInput, WeightedScorePriorityStrategy } from '../../../domain/priority/index.js';
 import {
@@ -62,6 +63,8 @@ const publisher = new InProcessEventPublisher();
 publisher.subscribe(new AuditRecorder(new DrizzleAuditRepository(db), () => asAuditId(nextId())));
 const assigner = new TechnicianAssigner(AssignmentStrategyRegistry.withDefaults());
 const priorityStrategy = new WeightedScorePriorityStrategy();
+const escalationChain = EscalationChainFactory.create();
+const standardEscalation = EscalationPolicy.standard();
 const system = Actor.system();
 const password = process.env.SEED_PASSWORD ?? 'demo1234';
 
@@ -171,15 +174,38 @@ async function main(): Promise<void> {
     if (report.failures.length)
       throw new Error('Audit publication failed', { cause: report.failures[0]!.error });
   }
-  async function generate(index: number, stage: string, created: number) {
-    const code = index < 8 ? 'DATABASE' : codes[index % codes.length]!;
+  interface OpenScenario {
+    readonly stage:
+      | 'new'
+      | 'classified'
+      | 'assigned'
+      | 'escalation'
+      | 'progress'
+      | 'pending'
+      | 'risk'
+      | 'resolved'
+      | 'reopened';
+    readonly code: keyof typeof templates;
+    readonly templateIndex: number;
+    readonly serviceName: string;
+    readonly impact: 1 | 2 | 3 | 4;
+    readonly urgency: 1 | 2 | 3 | 4;
+    readonly ageMinutes: number;
+    readonly responseMinutes?: number;
+    readonly escalateAtMinutes?: number;
+  }
+
+  async function generate(index: number, stage: string, created: number, overrides?: OpenScenario) {
+    const code = overrides ? overrides.code : index < 8 ? 'DATABASE' : codes[index % codes.length]!;
     const choices = templates[code];
-    const template =
-      index < 8
+    const template = overrides
+      ? choices[overrides.templateIndex]!
+      : index < 8
         ? choices[3 + (index % 3)]!
         : choices[Math.floor(index / codes.length) % choices.length]!;
-    const serviceName =
-      index < 8
+    const serviceName = overrides
+      ? overrides.serviceName
+      : index < 8
         ? 'Payment Gateway'
         : stage === 'escalation'
           ? 'VPN'
@@ -190,10 +216,20 @@ async function main(): Promise<void> {
     const reporter = Actor.user(employee);
     // The eight-minute escalation example is P2: 2 × 2 × 4 = 16.
     const impact = Impact.of(
-      stage === 'escalation' || stage === 'risk' ? 2 : 1 + Math.floor(random() * 3),
+      overrides
+        ? overrides.impact
+        : stage === 'escalation' || stage === 'risk'
+          ? 2
+          : 1 + Math.floor(random() * 3),
     );
     const urgency = Urgency.of(
-      stage === 'escalation' ? 3 : stage === 'risk' ? 2 : 1 + Math.floor(random() * 3),
+      overrides
+        ? overrides.urgency
+        : stage === 'escalation'
+          ? 3
+          : stage === 'risk'
+            ? 2
+            : 1 + Math.floor(random() * 3),
     );
     const affectedUsers = 1 + Math.floor(random() * 8);
     const priority = priorityStrategy.assess(
@@ -246,20 +282,39 @@ async function main(): Promise<void> {
     );
     const tech = techs.find((item) => item.id() === recommendation.technicianId)!;
     const worker = Actor.user(tech);
-    const assigned = stage === 'escalation' ? now - 8 * minute : created + 20_000;
+    const assigned = overrides
+      ? created + 20_000
+      : stage === 'escalation'
+        ? now - 8 * minute
+        : created + 20_000;
     incident.assign(tech, counts.get(tech.id()) ?? 0, system, at(assigned));
     assigner.confirm(recommendation);
     if (stage === 'assigned' || stage === 'escalation') {
+      if (stage === 'escalation') {
+        incident.checkEscalation(escalationChain, standardEscalation, at(now));
+      }
       incident.checkSla(at(now));
       await save(incident);
       return;
     }
-    const breach = stage === 'historical' && index % 25 < 3;
+    const breach =
+      overrides?.responseMinutes !== undefined
+        ? overrides.responseMinutes * minute > terms.target.response.ms
+        : stage === 'historical' && index % 25 < 3;
     const responseAt =
-      created +
-      (breach
-        ? terms.target.response.ms + minute
-        : Math.min(terms.target.response.ms * 0.35, 2 * minute));
+      overrides?.responseMinutes !== undefined
+        ? created + overrides.responseMinutes * minute
+        : created +
+          (breach
+            ? terms.target.response.ms + minute
+            : Math.min(terms.target.response.ms * 0.35, 2 * minute));
+    if (overrides?.escalateAtMinutes !== undefined) {
+      incident.checkEscalation(
+        escalationChain,
+        standardEscalation,
+        at(created + overrides.escalateAtMinutes * minute),
+      );
+    }
     if (breach) incident.checkSla(at(responseAt));
     incident.acknowledge(worker, at(responseAt));
     const started = responseAt + 10_000;
@@ -326,35 +381,148 @@ async function main(): Promise<void> {
       i >= 10 && i % 20 === 0 ? 'duplicate' : 'historical',
       now - (60 * 24 * 60 - i * 400) * minute,
     );
-  const stages = [
-    'new',
-    'classified',
-    'classified',
-    'escalation',
-    'assigned',
-    'assigned',
-    'risk',
-    'progress',
-    'progress',
-    'pending',
-    'pending',
-    'resolved',
-    'resolved',
-    'reopened',
+  // Keep Payment Gateway free of open seeded incidents so Workflow 1 starts with a clean duplicate check.
+  const openScenarios: readonly OpenScenario[] = [
+    {
+      stage: 'new',
+      code: 'HARDWARE',
+      templateIndex: 0,
+      serviceName: 'Employee Laptops',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 40,
+    },
+    {
+      stage: 'classified',
+      code: 'SOFTWARE',
+      templateIndex: 5,
+      serviceName: 'Employee Laptops',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 32,
+    },
+    {
+      stage: 'assigned',
+      code: 'CLOUD',
+      templateIndex: 2,
+      serviceName: 'Cloud Storage',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 18,
+    },
+    {
+      stage: 'escalation',
+      code: 'NETWORK',
+      templateIndex: 1,
+      serviceName: 'VPN',
+      impact: 2,
+      urgency: 3,
+      ageMinutes: 65,
+    },
+    {
+      stage: 'pending',
+      code: 'APPLICATION',
+      templateIndex: 0,
+      serviceName: 'HR Portal',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 45,
+      responseMinutes: 2,
+    },
+    {
+      stage: 'progress',
+      code: 'SECURITY',
+      templateIndex: 5,
+      serviceName: 'Single Sign-On',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 150,
+      escalateAtMinutes: 16,
+      responseMinutes: 17,
+    },
+    {
+      stage: 'progress',
+      code: 'STORAGE',
+      templateIndex: 5,
+      serviceName: 'Cloud Storage',
+      impact: 3,
+      urgency: 2,
+      ageMinutes: 190,
+      escalateAtMinutes: 31,
+      responseMinutes: 32,
+    },
+    {
+      stage: 'risk',
+      code: 'APPLICATION',
+      templateIndex: 1,
+      serviceName: 'HR Portal',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 385,
+      responseMinutes: 5,
+    },
+    {
+      stage: 'risk',
+      code: 'DATABASE',
+      templateIndex: 0,
+      serviceName: 'Customer Database',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 96,
+      responseMinutes: 4,
+    },
+    {
+      stage: 'risk',
+      code: 'NETWORK',
+      templateIndex: 2,
+      serviceName: 'Corporate Email',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 405,
+      responseMinutes: 5,
+    },
+    {
+      stage: 'progress',
+      code: 'DATABASE',
+      templateIndex: 2,
+      serviceName: 'Customer Database',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 22,
+      responseMinutes: 3,
+    },
+    {
+      stage: 'pending',
+      code: 'AUTHENTICATION',
+      templateIndex: 1,
+      serviceName: 'Single Sign-On',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 28,
+      responseMinutes: 3,
+    },
+    {
+      stage: 'resolved',
+      code: 'NETWORK',
+      templateIndex: 5,
+      serviceName: 'Corporate Email',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 600,
+    },
+    {
+      stage: 'reopened',
+      code: 'SOFTWARE',
+      templateIndex: 0,
+      serviceName: 'Employee Laptops',
+      impact: 2,
+      urgency: 2,
+      ageMinutes: 960,
+    },
   ];
-  for (let i = 0; i < stages.length; i++) {
-    const stage = stages[i]!;
-    // Force a P2 VPN ticket for escalation and a P3 HR ticket near its warning point.
-    const index = stage === 'escalation' ? 11 : stage === 'risk' ? 16 : 207 + i;
-    const age =
-      stage === 'risk'
-        ? 6.2 * 60
-        : stage === 'escalation'
-          ? 9
-          : stage === 'resolved' || stage === 'reopened'
-            ? 1800
-            : 15;
-    await generate(index, stage, now - age * minute);
+  for (let i = 0; i < openScenarios.length; i++) {
+    const scenario = openScenarios[i]!;
+    await generate(200 + i, scenario.stage, now - scenario.ageMinutes * minute, scenario);
   }
   const tables = [
     'users',

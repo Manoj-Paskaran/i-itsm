@@ -68,6 +68,7 @@ const assigned: IncidentDetail = {
   reporter: { id: 'reporter', name: 'Priya Sharma' },
   assignee: { id: 'tech', name: 'Farah Ali' },
   createdAt: '2026-11-19T10:30:00Z',
+  assignedAt: '2026-11-19T10:30:00Z',
   slaStatus: 'ON_TRACK',
   escalationLevel: 'TECHNICIAN',
   impact: 4,
@@ -99,6 +100,9 @@ vi.mock('@/components/app-shell', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/app-shell')>()),
   AppShell: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ user: { id: 'reporter', name: 'Priya Sharma' } }),
+}));
 vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
@@ -121,6 +125,12 @@ vi.mock('@/lib/insights', async (importOriginal) => ({
 
 const Report = Route.options.component!;
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+const submitChat = (value: string) => {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Your reply' }), {
+    target: { value },
+  });
+  click('Send reply');
+};
 
 function render(ui: ReactNode) {
   const client = new QueryClient();
@@ -222,7 +232,7 @@ it.each([
   click('Describe it in a chat');
   expect(screen.getByRole('heading', { name: 'Your report' })).toBeTruthy();
   expect(screen.getByPlaceholderText('e.g. Payments fail at checkout')).toBeTruthy();
-  click(example);
+  submitChat(example);
   expect(within(screen.getByRole('log')).getByText(example)).toBeTruthy();
   const suggestedService = await screen.findByRole('button', { name: 'Yes, Payment Gateway' });
   expect(suggestedService.querySelector('svg')).toBeNull();
@@ -282,7 +292,7 @@ it('keepsTheTopDuplicateAndReviewActionsVisibleWithExtraMatchesCollapsed', async
   ];
   render(<Report />);
   click('Describe it in a chat');
-  click(example);
+  submitChat(example);
   fireEvent.click(await screen.findByRole('button', { name: 'Yes, Payment Gateway' }));
   click('Some work is slowed down');
   click('Today');
@@ -306,7 +316,7 @@ it('fallsBackToRulesWhenTheIntakeCallFails', async () => {
   request.mockRejectedValueOnce(new TypeError('fetch failed'));
   render(<Report />);
   click('Describe it in a chat');
-  click(example);
+  submitChat(example);
   expect(await screen.findByRole('button', { name: 'Yes, Payment Gateway' })).toBeTruthy();
   expect(screen.getByText('This sounds like Payment Gateway. Is that right?')).toBeTruthy();
   expect(screen.queryByText('AI-assisted')).toBeNull();
@@ -324,7 +334,7 @@ it.each([
   request.mockResolvedValueOnce(Response.json(reading));
   render(<Report />);
   click('Describe it in a chat');
-  click(example);
+  submitChat(example);
   if (tooltip) {
     fireEvent.click(await screen.findByRole('button', { name: 'Right now' }));
     expect(screen.getAllByText('AI-assisted')).toEqual([screen.getByTitle(tooltip)]);
@@ -350,12 +360,13 @@ it('sendsTheChatCategoryWithTheReport', async () => {
   }
   const { rerender } = render(<Report />);
   click('Describe it in a chat');
-  click(example);
+  submitChat(example);
   const log = within(screen.getByRole('log'));
   expect(log.getByText(example)).toBeTruthy();
   expect(log.getByRole('status', { name: 'IT assistant is typing' })).toBeTruthy();
   expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Your reply' }).disabled).toBe(true);
-  expect(screen.getByRole<HTMLButtonElement>('button', { name: example }).disabled).toBe(true);
+  expect(screen.queryByRole('button', { name: example })).toBeNull();
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send reply' }).disabled).toBe(true);
 
   await advance(1199);
   expect(log.getByRole('status')).toBeTruthy();
@@ -444,4 +455,43 @@ it('sendsTheChatCategoryWithTheReport', async () => {
     urgency: 2,
     affectedUsers: 1,
   });
+});
+
+it('labelsSelfReportedDuplicateMatchesOnReportPage', async () => {
+  api.matches = [
+    {
+      incident: assigned,
+      score: 0.9,
+      reasons: ['same service'],
+      source: 'rules',
+    },
+    {
+      incident: {
+        ...assigned,
+        id: 'other-user-inc',
+        number: 'INC0214',
+        title: 'Checkout error reported by Rahul',
+        reporter: { id: 'rahul', name: 'Rahul Verma' },
+      },
+      score: 0.7,
+      reasons: ['same service'],
+      source: 'rules',
+    },
+  ];
+  render(<Report />);
+  click('Describe it in a chat');
+  submitChat(example);
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, Payment Gateway' }));
+  click('Important work is blocked');
+  click('Today');
+  click('Just me');
+  const advisory = within(
+    screen
+      .getByRole('complementary', { name: 'Review your report' })
+      .querySelector('[aria-label="Is this already reported?"]')!,
+  );
+  const selfRow = advisory.getByRole('link', { name: /^INC0215 · / }).closest('li')!;
+  expect(within(selfRow).getByText('Reported by you')).toBeTruthy();
+  const otherRow = advisory.getByRole('link', { name: /^INC0214 · / }).closest('li')!;
+  expect(within(otherRow).queryByText('Reported by you')).toBeNull();
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SignJWT } from 'jose';
 import { InvalidTokenException } from '../../domain/exceptions/index.js';
-import { asUserId } from '../../domain/shared/index.js';
+import { asIncidentId, asUserId } from '../../domain/shared/index.js';
 import { Role, UserFactory } from '../../domain/users/index.js';
 import { loadEnv } from '../config/env.js';
 import { JoseTokenService } from './token.service.js';
@@ -37,5 +37,21 @@ describe('authentication adapters', () => {
       .setExpirationTime(1)
       .sign(new TextEncoder().encode(env.JWT_SECRET));
     await expect(tokens.verifyAccess(expired)).rejects.toBeInstanceOf(InvalidTokenException);
+  });
+  it('issuesAndVerifiesEmailLinkTokensAndRejectsSwappedAudiences', async () => {
+    const env = loadEnv({});
+    const tokens = new JoseTokenService(env);
+    const incidentId = asIncidentId('01900000-0000-7000-8000-000000000099');
+    const linkToken = await tokens.issueEmailLink(user.id(), incidentId);
+    expect(await tokens.verifyEmailLink(linkToken)).toEqual({
+      userId: user.id(),
+      incidentId,
+    });
+    const access = await tokens.issueAccess(user);
+    await expect(tokens.verifyEmailLink(access.token)).rejects.toBeInstanceOf(
+      InvalidTokenException,
+    );
+    await expect(tokens.verifyAccess(linkToken)).rejects.toBeInstanceOf(InvalidTokenException);
+    await expect(tokens.verifyRefresh(linkToken)).rejects.toBeInstanceOf(InvalidTokenException);
   });
 });

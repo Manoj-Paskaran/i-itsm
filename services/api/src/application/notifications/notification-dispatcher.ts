@@ -70,11 +70,20 @@ export class NotificationDispatcher implements EventSubscriber {
           for (const channel of route.channels) entry.channels.add(channel);
           recipients.set(user.id(), entry);
         }
+    const actor = event.actorId ? await this.users.findById(event.actorId) : null;
     const snapshot = incident?.toSnapshot();
     const messages = this.factory.create(
       event,
       [...recipients.values()].map((entry) => entry.user),
-      snapshot ? { id: incident!.id, number: snapshot.number, title: snapshot.title } : null,
+      snapshot
+        ? {
+            id: incident!.id,
+            number: snapshot.number,
+            title: snapshot.title,
+            ...(snapshot.resolution ? { resolution: snapshot.resolution } : {}),
+          }
+        : null,
+      actor?.name(),
     );
     const errors: unknown[] = [];
     for (const message of messages)

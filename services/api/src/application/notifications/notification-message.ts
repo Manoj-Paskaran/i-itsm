@@ -10,5 +10,10 @@ export interface NotificationMessage {
   readonly body: string;
   readonly incidentId: IncidentId | null;
   readonly incidentNumber: string | null;
+  readonly incidentTitle?: string;
+  readonly actorName?: string;
+  readonly resolutionSummary?: string;
+  readonly rootCause?: string;
+  readonly question?: string;
   readonly createdAt: Instant;
 }

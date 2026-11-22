@@ -13,7 +13,7 @@ import {
   Settings,
   Sun,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ROLES } from '@/lib/admin-forms';
 import { useAuth } from '@/lib/auth';
 import { navItems } from '@/lib/staff';
@@ -56,6 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const href = useRouterState({ select: (s) => s.location.href });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const signedOut = useRef(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
@@ -70,8 +71,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
-    if (auth.status === 'anonymous')
-      void navigate({ to: '/login', search: { redirect: href }, replace: true });
+    if (auth.status === 'anonymous') {
+      const fromSignOut = signedOut.current;
+      signedOut.current = false;
+      void navigate({
+        to: '/login',
+        search: fromSignOut ? {} : { redirect: href },
+        replace: true,
+      });
+    }
     // Redirect once per sign-out, not on every router state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.status]);
@@ -247,7 +255,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             aria-label="Sign out"
             className="rounded-md p-1.5 hover:bg-hover max-lg:grid max-lg:size-10 max-lg:place-items-center"
-            onClick={() => void auth.logout()}
+            onClick={() => {
+              signedOut.current = true;
+              void auth.logout();
+            }}
           >
             <LogOut size={16} strokeWidth={1.75} aria-hidden />
           </button>

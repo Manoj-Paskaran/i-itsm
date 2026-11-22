@@ -210,6 +210,15 @@ describe('incident HTTP', () => {
       .expect(200);
     expect(response.body).toEqual([]);
   });
+  it('listShowsWhenTheCurrentAssigneeGotTheIncident', async () => {
+    const created = await report();
+    expect(created.assignedAt).not.toBeNull();
+    const response = await request(server())
+      .get('/api/incidents')
+      .set('Authorization', auth(adminToken))
+      .expect(200);
+    expect(response.body[0].assignedAt).toBe(created.assignedAt);
+  });
   it('reportingNotifiesAssignedTechnicianInbox', async () => {
     await report();
     const response = await request(server())

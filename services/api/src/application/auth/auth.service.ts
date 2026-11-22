@@ -76,6 +76,13 @@ export class AuthService {
     if (!user || !user.isActive()) throw new InvalidTokenException();
     return this.session(user);
   }
+  async loginWithEmailLink(token: string) {
+    const { userId, incidentId } = await this.tokens.verifyEmailLink(token);
+    const user = await this.users.findById(userId);
+    if (!user || !user.isActive()) throw new InvalidTokenException();
+    const session = await this.session(user);
+    return { ...session, incidentId };
+  }
   async me(id: UserId): Promise<AuthUserView> {
     const user = await this.users.findById(id);
     if (!user || !user.isActive()) throw new InvalidTokenException();

@@ -1,4 +1,5 @@
 import type { IncidentDetail } from '@itsm/contracts';
+import { Link } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
 import { Fragment } from 'react';
 import { roadmap, formatClock, type AuditEntry, type Tone } from '@/lib/roadmap';
@@ -93,7 +94,20 @@ export function LifecycleRail({ detail, audit }: { detail: IncidentDetail; audit
                   <Segments text={step.phase.text} />
                 </div>
               )}
-              {step.note && <div className="text-xs text-muted-foreground">{step.note}</div>}
+              {step.noteLink ? (
+                <div className="text-xs text-muted-foreground">
+                  Duplicate of{' '}
+                  <Link
+                    to="/incidents/$incidentId"
+                    params={{ incidentId: step.noteLink.incidentId }}
+                    className="font-medium text-foreground underline underline-offset-2 hover:text-primary tabular"
+                  >
+                    {step.noteLink.number}
+                  </Link>
+                </div>
+              ) : (
+                step.note && <div className="text-xs text-muted-foreground">{step.note}</div>
+              )}
               {step.sla && (
                 <div className={`mt-0.5 text-xs tabular ${TONE[step.sla.tone]}`}>
                   <Segments text={step.sla.text} emphasiseLast tone={step.sla.tone} />
@@ -122,7 +136,7 @@ function Segments({
     <Fragment key={i}>
       {i > 0 && <span className="lg:hidden"> · </span>}
       <span
-        className={`whitespace-nowrap lg:block lg:whitespace-normal ${emphasiseLast && i > 0 && part !== 'paused' ? `font-medium ${tone === 'muted' ? 'text-foreground' : ''}` : ''}`}
+        className={`whitespace-nowrap lg:block lg:whitespace-normal ${emphasiseLast && i > 0 && part !== 'paused' && !part.endsWith('left when resumed') && !part.endsWith('early') ? `font-medium ${tone === 'muted' ? 'text-foreground' : ''}` : ''}`}
       >
         {part}
       </span>

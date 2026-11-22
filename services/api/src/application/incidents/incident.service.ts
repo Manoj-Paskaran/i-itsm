@@ -4,11 +4,13 @@ import {
   type IncidentListQuery,
 } from '@itsm/contracts';
 import { Logger } from '@nestjs/common';
+import type { AuditRecordSnapshot } from '../../domain/audit/index.js';
 import {
   AssignmentContext,
   TechnicianLoad,
   type TechnicianAssigner,
 } from '../../domain/assignment/index.js';
+import { EventType } from '../../domain/events/index.js';
 import {
   IncidentNotFoundException,
   InvalidInputException,
@@ -67,9 +69,14 @@ export class IncidentService {
   ) {
     this.mapper = new IncidentViewMapper(incidents, users, services, categories, clock);
   }
-  private detail(i: Incident) {
+  private detail(i: Incident, viewer: User) {
     const e = this.explanations.get(i.id);
-    return this.mapper.detail(i, e?.rationale, e?.reasons);
+    return this.mapper.detail(
+      i,
+      (authorId) => IncidentVisibility.canViewNote(viewer, authorId),
+      e?.rationale,
+      e?.reasons,
+    );
   }
   private async save(i: Incident) {
     await this.incidents.save(i);
@@ -80,29 +87,36 @@ export class IncidentService {
     if (!i || !IncidentVisibility.canView(user, i)) throw new IncidentNotFoundException(id);
     return i;
   }
-  private async context(i: Incident): Promise<AssignmentContext> {
+  private async context(i: Incident, activeCounts?: ReadonlyMap<UserId, number>) {
     const s = i.toSnapshot();
+    const priority = i.priority();
+    if (!s.categoryId || !priority) return null;
     const [category, technicians, counts] = await Promise.all([
-      s.categoryId ? this.categories.findById(s.categoryId) : null,
+      this.categories.findById(s.categoryId),
       this.users.listTechnicians(),
-      this.incidents.countOpenByAssignee(),
+      activeCounts ?? this.incidents.countOpenByAssignee(),
     ]);
-    if (!category || !i.priority())
-      throw new InvalidInputException('Incident must be classified before assignment', {
-        id: i.id,
-      });
+    if (!category) return null;
     return new AssignmentContext(
       i.id,
       s.serviceId,
-      i.priority()!,
+      priority,
       category,
       technicians
         .filter((t) => t.isActive())
         .map((t) => new TechnicianLoad(t, counts.get(t.id()) ?? 0)),
     );
   }
-  private async autoAssign(i: Incident, by: Actor) {
+  private async requiredContext(i: Incident): Promise<AssignmentContext> {
     const ctx = await this.context(i);
+    if (!ctx)
+      throw new InvalidInputException('Incident must be classified before assignment', {
+        id: i.id,
+      });
+    return ctx;
+  }
+  private async autoAssign(i: Incident, by: Actor) {
+    const ctx = await this.requiredContext(i);
     const recommendation = this.assigner.pick(ctx);
     const load = ctx.candidates.find((c) => c.technician.id() === recommendation.technicianId)!;
     i.assign(load.technician, load.activeIncidents, by, this.clock.now());
@@ -164,7 +178,7 @@ export class IncidentService {
     }
     await this.save(i);
     this.explanations.set(i.id, { rationale: assessment.rationale, reasons });
-    return this.detail(i);
+    return this.detail(i, user);
   }
   async list(user: User, query: IncidentListQuery) {
     const filter = {
@@ -199,7 +213,7 @@ export class IncidentService {
     return Promise.all(result.map((i) => this.mapper.summary(i)));
   }
   async get(user: User, id: string) {
-    return this.detail(await this.visible(user, id));
+    return this.detail(await this.visible(user, id), user);
   }
   private async command(
     user: User,
@@ -213,7 +227,7 @@ export class IncidentService {
     i.checkSla(this.clock.now());
     await action(i, Actor.user(user));
     await this.save(i);
-    return this.detail(i);
+    return this.detail(i, user);
   }
   async assign(user: User, id: string, technicianId?: string) {
     let reasons: readonly string[] = [];
@@ -225,6 +239,17 @@ export class IncidentService {
           throw new InvalidInputException('Technician not found', { technicianId });
         if (!tech.isActive()) throw new TechnicianUnavailableException();
         const counts = await this.incidents.countOpenByAssignee();
+        const ctx = await this.context(i, counts);
+        const recommendation = ctx
+          ? this.assigner.recommend(ctx, 3).find((r) => r.technicianId === tech.id())
+          : undefined;
+        const chosenBy = `chosen by ${user.name()}`;
+        const positiveReasons = recommendation
+          ? recommendation.reasons.filter((r) => !r.startsWith('lacks '))
+          : [];
+        reasons = recommendation
+          ? [`${chosenBy} from the advisory suggestions`, ...positiveReasons]
+          : [chosenBy];
         i.assign(tech, counts.get(tech.id()) ?? 0, actor, this.clock.now());
       }
     });
@@ -305,7 +330,7 @@ export class IncidentService {
   async recommendations(u: User, id: string) {
     const i = await this.visible(u, id);
     u.require(P.INCIDENT_ASSIGN);
-    const ctx = await this.context(i);
+    const ctx = await this.requiredContext(i);
     return this.assigner.recommend(ctx, 3).map((r) => {
       const tech = ctx.candidates.find((c) => c.technician.id() === r.technicianId)!.technician;
       return {
@@ -317,13 +342,17 @@ export class IncidentService {
     });
   }
   async audit(u: User, id: string) {
-    // Anyone who may see the incident may read its history; the global audit search stays on AUDIT_VIEW.
     const i = await this.visible(u, id);
-    const records = await this.audits.listByIncident(i.id);
-    const label = await this.auditLabels(i);
+    const records = (await this.audits.listByIncident(i.id))
+      .map((record) => record.toSnapshot())
+      .filter(
+        (record) =>
+          record.action !== EventType.NoteAdded ||
+          IncidentVisibility.canViewNote(u, record.actorId),
+      );
+    const label = await this.auditLabels(i, records);
     return Promise.all(
-      records.map(async (r) => {
-        const s = r.toSnapshot();
+      records.map(async (s) => {
         const actor = s.actorId ? await this.users.findById(s.actorId) : null;
         return AuditEntrySchema.parse({
           at: s.at,
@@ -337,12 +366,14 @@ export class IncidentService {
     );
   }
   /** Readable names for ids that domain events embed, so the audit trail reads like the spec's example. */
-  private async auditLabels(i: Incident): Promise<Map<string, string>> {
+  private async auditLabels(
+    i: Incident,
+    records: readonly AuditRecordSnapshot[],
+  ): Promise<Map<string, string>> {
     const snapshot = i.toSnapshot();
     const [users, services, categories] = await Promise.all([
       Promise.all(
         [snapshot.reporterId, snapshot.assigneeId]
-          .concat(snapshot.notes.map((n) => n.authorId))
           .filter((x): x is UserId => !!x)
           .map((id) => this.users.findById(id)),
       ),
@@ -354,9 +385,8 @@ export class IncidentService {
     // Past assignees no longer on the incident still appear in older events; resolve them lazily below.
     if (services) labels.set(services.id(), services.name());
     for (const c of categories) labels.set(c.id(), c.toSnapshot().code);
-    const records = await this.audits.listByIncident(i.id);
     for (const r of records)
-      for (const id of r.toSnapshot().description.match(UUID) ?? [])
+      for (const id of r.description.match(UUID) ?? [])
         if (!labels.has(id)) {
           const user = await this.users.findById(asUserId(id));
           if (user) labels.set(id, `${user.name()} (${user.role()})`);

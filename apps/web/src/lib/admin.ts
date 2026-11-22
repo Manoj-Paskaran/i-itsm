@@ -100,3 +100,11 @@ const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
 /** The global audit search returns raw ids in descriptions; show the names we know instead. */
 export const labelIds = (text: string, labels: ReadonlyMap<string, string>) =>
   text.replace(UUID, (id) => labels.get(id.toLowerCase()) ?? id);
+
+/** Says where the new strategy applies: new incidents only; existing ones keep their decisions. */
+export function strategySavedMessage(key: 'priority' | 'assignment', id: string): string {
+  const label = strategyLabel(id);
+  return key === 'priority'
+    ? `Strategy saved. New incidents use ${label}; existing incidents keep their priority.`
+    : `Strategy saved. New incidents are assigned by ${label}.`;
+}

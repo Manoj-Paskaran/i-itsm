@@ -98,8 +98,8 @@ function Login() {
     setPassword(DEMO_PASSWORD);
     setPending(true);
     setError('');
-    // Stay on the incident being shown; other pages may belong to another role, so go home.
-    setDemoTarget(redirect?.startsWith('/incidents/') ? redirect : '/');
+    // Demo cards always start the next person on their home screen so staff can open via notifications.
+    setDemoTarget('/');
     try {
       await auth.login(demoEmail, DEMO_PASSWORD);
     } catch (err) {

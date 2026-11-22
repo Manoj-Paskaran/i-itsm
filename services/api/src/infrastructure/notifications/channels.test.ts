@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
+import type { SendMailOptions } from 'nodemailer';
 import { describe, expect, it, vi } from 'vitest';
 import { EventType } from '../../domain/events/index.js';
 import { NetworkFailureException } from '../../domain/exceptions/index.js';
 import { asIncidentId, asUserId, Instant } from '../../domain/shared/index.js';
+import type { TokenService } from '../../ports/index.js';
 import { InMemoryNotificationRepository } from '../../application/testing/in-memory-notification-repository.js';
 import { loadEnv } from '../config/env.js';
 import { EmailChannel } from './email.channel.js';
@@ -79,5 +81,55 @@ describe('notification channels', () => {
     const from = 'I-ITSM <sender@example.com>';
     await new EmailChannel(loadEnv({ MAIL_FROM: from }), deliver).send(message);
     expect(deliver).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ from }));
+  });
+  it('deliversRenderedSubjectHtmlAndPlainTextWithIncidentLink', async () => {
+    const deliver = vi
+      .fn<(options: SendMailOptions) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    await new EmailChannel(loadEnv({ WEB_ORIGIN: 'https://itsm.demo/' }), deliver).send({
+      ...message,
+      recipientName: 'Priya Sharma',
+      eventType: EventType.IncidentResolved,
+      title: 'INC0215 resolved',
+      body: 'Restarted gateway connector.',
+      incidentNumber: 'INC0215',
+      incidentTitle: 'Payment Gateway declines every card at checkout',
+      resolutionSummary: 'Restarted gateway connector.',
+      rootCause: 'Stale connection pool.',
+    });
+    expect(deliver).toHaveBeenCalledTimes(1);
+    const [delivered] = deliver.mock.calls[0]!;
+    expect(delivered.subject).toBe(
+      '[INC0215] Resolved: Payment Gateway declines every card at checkout',
+    );
+    expect(delivered.html).toContain('Review and confirm the fix');
+    expect(delivered.text).toContain(
+      'Review and confirm the fix: https://itsm.demo/incidents/00000000-0000-4000-8000-000000000002',
+    );
+  });
+  it('buildsSignedEmailLoginLinkWhenTokenServiceIsProvided', async () => {
+    const deliver = vi
+      .fn<(options: SendMailOptions) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const issueEmailLink = vi.fn().mockResolvedValue('signed-email-token');
+    const tokens = { issueEmailLink } as unknown as TokenService;
+    await new EmailChannel(loadEnv({ WEB_ORIGIN: 'https://itsm.demo/' }), deliver, tokens).send({
+      ...message,
+      recipientName: 'Priya Sharma',
+      eventType: EventType.InfoRequested,
+      title: 'Information requested for INC0215',
+      body: 'What error code do you see?',
+      incidentNumber: 'INC0215',
+      incidentTitle: 'Card payments failing at checkout',
+      question: 'What error code do you see?',
+    });
+    expect(issueEmailLink).toHaveBeenCalledWith(message.recipientId, message.incidentId);
+    const [delivered] = deliver.mock.calls[0]!;
+    expect(delivered.html).toContain(
+      'https://itsm.demo/api/auth/email-link?token=signed-email-token',
+    );
+    expect(delivered.text).toContain(
+      'Answer the question: https://itsm.demo/api/auth/email-link?token=signed-email-token',
+    );
   });
 });

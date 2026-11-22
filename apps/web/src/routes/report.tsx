@@ -19,6 +19,7 @@ import {
 } from '@/lib/chat-intake';
 import { useChatIntake } from '@/lib/chat-intake-api';
 import { PriorityChip, SlaPill, StatusPill } from '@/components/incident/chips';
+import { useAuth } from '@/lib/auth';
 import { LEVEL_LABEL, useReportIncident, useServices } from '@/lib/incidents';
 import { similarityQuery, useDebounced, useSimilarCheck } from '@/lib/insights';
 import {
@@ -48,6 +49,7 @@ const field =
   'mt-1 block w-full rounded-md border border-input bg-background px-3 text-base font-normal text-foreground placeholder:text-muted-foreground aria-invalid:border-critical';
 
 function ReportPage() {
+  const { user } = useAuth();
   const services = useServices();
   const servicesReady = !services.isError && !!services.data?.length;
   const formRef = useRef<HTMLFormElement>(null);
@@ -206,7 +208,7 @@ function ReportPage() {
                   pending={report.isPending}
                   submitDisabled={!servicesReady}
                   advisory={{
-                    content: <AlreadyReported check={chatAdvisory} embedded />,
+                    content: <AlreadyReported check={chatAdvisory} embedded viewerId={user?.id} />,
                     hasMatches: chatAdvisory?.status === 'ready' && chatAdvisory.matches.length > 0,
                   }}
                   error={
@@ -332,7 +334,7 @@ function ReportPage() {
                         Answer the questions to finish your draft.
                       </p>
                     )}
-                    <FormDuplicateAdvisory form={form} />
+                    <FormDuplicateAdvisory form={form} viewerId={user?.id} />
                     <ReportPriorityPreview
                       form={form}
                       service={services.data?.find((service) => service.id === form.serviceId)}
@@ -382,7 +384,7 @@ function duplicateCheckStatus(
   return { status: 'ready', matches: check.data ?? [] };
 }
 
-function FormDuplicateAdvisory({ form }: { form: ReportForm }) {
+function FormDuplicateAdvisory({ form, viewerId }: { form: ReportForm; viewerId?: string }) {
   const current = similarityQuery(form);
   // Debounce the serialised request: a fresh object every render would never settle.
   const key = JSON.stringify(current);
@@ -391,6 +393,7 @@ function FormDuplicateAdvisory({ form }: { form: ReportForm }) {
   return (
     <AlreadyReported
       check={current && duplicateCheckStatus(check, settled !== key && !check.data)}
+      viewerId={viewerId}
     />
   );
 }
@@ -399,9 +402,11 @@ function FormDuplicateAdvisory({ form }: { form: ReportForm }) {
 function AlreadyReported({
   check,
   embedded = false,
+  viewerId,
 }: {
   check: DuplicateCheck | null;
   embedded?: boolean;
+  viewerId?: string;
 }) {
   if (!check) return null;
   const matches = check.status === 'ready' ? check.matches : [];
@@ -438,7 +443,7 @@ function AlreadyReported({
           </p>
           <ul className="mt-2 space-y-2">
             {visible.map((match) => (
-              <DuplicateMatch key={match.incident.id} match={match} />
+              <DuplicateMatch key={match.incident.id} match={match} viewerId={viewerId} />
             ))}
           </ul>
           {!!more.length && (
@@ -448,7 +453,7 @@ function AlreadyReported({
               </summary>
               <ul className="mt-1 space-y-2">
                 {more.map((match) => (
-                  <DuplicateMatch key={match.incident.id} match={match} />
+                  <DuplicateMatch key={match.incident.id} match={match} viewerId={viewerId} />
                 ))}
               </ul>
             </details>
@@ -462,7 +467,14 @@ function AlreadyReported({
   );
 }
 
-function DuplicateMatch({ match: { incident, score, reasons } }: { match: SimilarIncident }) {
+function DuplicateMatch({
+  match: { incident, score, reasons },
+  viewerId,
+}: {
+  match: SimilarIncident;
+  viewerId?: string;
+}) {
+  const reportedByYou = !!viewerId && incident.reporter.id === viewerId;
   const explanation = reasons
     .map((reason) => reason.replace(/\s*\([^()]*\)/g, '').trim())
     .filter(Boolean)
@@ -479,6 +491,7 @@ function DuplicateMatch({ match: { incident, score, reasons } }: { match: Simila
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <StatusPill status={incident.status} small />
         <span className="tabular">{formatScore(score)} match</span>
+        {reportedByYou && <span className="font-medium text-foreground">Reported by you</span>}
         {explanation && <span className="min-w-0 break-words">{explanation}</span>}
       </div>
       <Link

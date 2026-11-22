@@ -3,6 +3,7 @@ import {
   IncidentAssigned,
   IncidentEscalated,
   IncidentResolved,
+  InfoRequested,
   NoteAdded,
   PriorityChanged,
   SlaBreached,
@@ -137,12 +138,13 @@ describe('notification rules', () => {
       expect.arrayContaining([technicianId, reporterId]),
     );
   });
-  it('unroutedEventSendsNothing', async () => {
+  it('internalNoteDoesNotSendNotifications', async () => {
     const s = await setup();
     const event = new NoteAdded(s.context, 'Note');
     expect(s.dispatcher.handles(event.type)).toBe(false);
     await s.dispatcher.on(event);
     expect(s.inApp.messages).toHaveLength(0);
+    expect(s.email.messages).toHaveLength(0);
   });
   it('everySpecTriggerHasARoute', () => {
     const policy = new NotificationRoutingPolicy();
@@ -203,5 +205,68 @@ describe('notification rules', () => {
       factory.create(new SlaBreached(s.context, SlaKind.RESPONSE, at), [technician], incident)[0]
         ?.title,
     ).toBe('SLA breached on INC0215 (response)');
+  });
+  it('factoryPopulatesEmailTemplateFieldsWithoutChangingInAppFields', async () => {
+    const s = await setup();
+    const factory = new NotificationFactory();
+    const incident = {
+      id: s.incident.id,
+      number: 'INC0215',
+      title: 'Payment Gateway declines every card at checkout',
+      resolution: {
+        summary: 'Restarted the gateway connector.',
+        rootCause: 'TLS certificate pool exhausted.',
+      },
+    };
+    const [resolved] = factory.create(
+      new IncidentResolved(s.context, 'Restarted the gateway connector.'),
+      [employee],
+      incident,
+      'Farah Nair',
+    );
+    expect(resolved?.title).toBe('INC0215 resolved');
+    expect(resolved?.body).toBe('Restarted the gateway connector.');
+    expect(resolved?.incidentTitle).toBe('Payment Gateway declines every card at checkout');
+    expect(resolved?.resolutionSummary).toBe('Restarted the gateway connector.');
+    expect(resolved?.rootCause).toBe('TLS certificate pool exhausted.');
+    expect(resolved?.actorName).toBe('Farah Nair');
+
+    const [infoRequested] = factory.create(
+      new InfoRequested(s.context, 'Which card types are affected?'),
+      [employee],
+      incident,
+      'Farah Nair',
+    );
+    expect(infoRequested?.title).toBe('Information requested for INC0215');
+    expect(infoRequested?.body).toBe('Which card types are affected?');
+    expect(infoRequested?.question).toBe('Which card types are affected?');
+    expect(infoRequested?.actorName).toBe('Farah Nair');
+  });
+  it('dispatcherForwardsResolutionRootCauseAndActorNameToMessages', async () => {
+    const s = await setup();
+    const resolvedIncident = Incident.rehydrate({ ...snapshot('RESOLVED'), number: 'INC0215' });
+    const incidents = new InMemoryIncidentRepository();
+    await incidents.save(resolvedIncident);
+    const inApp = new RecordingChannel('IN_APP');
+    const email = new RecordingChannel('EMAIL');
+    const dispatcher = new NotificationDispatcher(incidents, s.users, [inApp, email]);
+    const context = { ...s.context, incidentId: resolvedIncident.id, actorId: technicianId };
+
+    await dispatcher.on(new IncidentResolved(context, 'Restarted the router'));
+    expect(email.messages[0]).toMatchObject({
+      incidentNumber: 'INC0215',
+      incidentTitle: 'WiFi is unavailable',
+      resolutionSummary: 'Restarted the router',
+      rootCause: 'Router fault',
+      actorName: technician.name(),
+    });
+
+    await dispatcher.on(new InfoRequested(context, 'Which office?'));
+    expect(email.messages[1]).toMatchObject({
+      incidentNumber: 'INC0215',
+      incidentTitle: 'WiFi is unavailable',
+      question: 'Which office?',
+      actorName: technician.name(),
+    });
   });
 });

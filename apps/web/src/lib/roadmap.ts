@@ -24,6 +24,8 @@ export interface RoadmapStep {
   sla: SlaNote | null;
   /** Extra fact under a reached step, e.g. which incident this one duplicates. */
   note: string | null;
+  /** When `note` references another incident, link straight to it. */
+  noteLink?: { incidentId: string; number: string } | null;
 }
 
 // The audit status each lifecycle step stands for; Reported uses createdAt instead.
@@ -70,6 +72,7 @@ export function reachedAt(audit: AuditEntry[], status: Status, which: 'first' | 
 
 /** The step after the last reached one is the phase in progress; this is its wording. */
 export function phaseLine(detail: IncidentDetail, viewerId?: string): RoadmapStep['phase'] {
+  const isAssignee = viewerId !== undefined && viewerId === detail.assignee?.id;
   const assignee = firstName(detail.assignee?.name);
   // The reporter reads their own incident: the wait is on them, so say so.
   const self = viewerId !== undefined && viewerId === detail.reporter.id;
@@ -80,18 +83,34 @@ export function phaseLine(detail: IncidentDetail, viewerId?: string): RoadmapSte
     case 'CLASSIFIED':
       return { text: 'Assigning', tone: 'primary' };
     case 'ASSIGNED':
-      return { text: `Acknowledging · waiting for\u00a0${assignee}`, tone: 'primary' };
+      return {
+        text: isAssignee
+          ? 'Acknowledging · your turn'
+          : `Acknowledging · waiting for\u00a0${assignee}`,
+        tone: 'primary',
+      };
     case 'ACKNOWLEDGED':
-      return { text: `Starting work · waiting for\u00a0${assignee}`, tone: 'primary' };
+      return {
+        text: isAssignee
+          ? 'Starting work · your turn'
+          : `Starting work · waiting for\u00a0${assignee}`,
+        tone: 'primary',
+      };
     case 'IN_PROGRESS':
-      return { text: `Resolving · with\u00a0${assignee}`, tone: 'primary' };
+      return {
+        text: isAssignee ? 'Resolving · your turn' : `Resolving · with\u00a0${assignee}`,
+        tone: 'primary',
+      };
     case 'PENDING_INFO':
       return {
         text: self ? 'Waiting for your answer' : `Waiting for info from\u00a0${reporter}`,
         tone: 'warning',
       };
     case 'REOPENED':
-      return { text: `Reopened · waiting for\u00a0${assignee}`, tone: 'warning' };
+      return {
+        text: isAssignee ? 'Reopened · your turn' : `Reopened · waiting for\u00a0${assignee}`,
+        tone: 'warning',
+      };
     case 'RESOLVED':
       return { text: `Confirming fix · waiting for\u00a0${reporter}`, tone: 'primary' };
     case 'VERIFIED':
@@ -113,9 +132,20 @@ function slaNote(
   if (reached) {
     if (!doneAt) return null;
     const late = doneAt.getTime() - deadline.getTime();
-    return late > 0
-      ? { label, deadline, text: `${label} late by ${formatDuration(late)}`, tone: 'critical' }
-      : { label, deadline, text: `${label} met`, tone: 'success' };
+    if (late > 0)
+      return {
+        label,
+        deadline,
+        text: `${label} late by ${formatDuration(late)}`,
+        tone: 'critical',
+      };
+    const early = -late;
+    return {
+      label,
+      deadline,
+      text: early > 0 ? `${label} met · ${formatDuration(early)} early` : `${label} met`,
+      tone: 'success',
+    };
   }
   const due = `${label} due ${formatClock(deadline, now)}`;
   const left = deadline.getTime() - now.getTime();
@@ -128,7 +158,12 @@ function slaNote(
           text: `${due} · ${formatDuration(left)} overdue · paused`,
           tone: 'critical',
         }
-      : { label, deadline, text: `${due} · paused`, tone: 'muted' };
+      : {
+          label,
+          deadline,
+          text: `Clock paused · ${formatDuration(left)} left when resumed`,
+          tone: 'muted',
+        };
   if (left < 0)
     return { label, deadline, text: `${due} · ${formatDuration(left)} overdue`, tone: 'critical' };
   return {
@@ -198,6 +233,13 @@ export function roadmap(
       note:
         duplicate && label === 'Closed' && detail.closure?.duplicateOf
           ? `Duplicate of ${detail.closure.duplicateOf.number}`
+          : null,
+      noteLink:
+        duplicate && label === 'Closed' && detail.closure?.duplicateOf
+          ? {
+              incidentId: detail.closure.duplicateOf.id,
+              number: detail.closure.duplicateOf.number,
+            }
           : null,
     };
   });

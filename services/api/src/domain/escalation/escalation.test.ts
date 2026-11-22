@@ -61,10 +61,18 @@ describe('escalation chain', () => {
       () => new EscalationPolicy({ P1: [Duration.ofMs(0), t[1], t[2]], P2: t, P3: t, P4: t }),
     ).toThrow(InvalidInputException);
   });
-  it('demoPolicyEscalatesP1WithinSeconds', () =>
-    expect(check(20, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())?.to).toBe(
+  it('demoPolicyEscalatesP1WithinSeconds', () => {
+    expect(check(59, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())).toBeNull();
+    expect(check(60, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())?.to).toBe(
       EscalationLevel.TEAM_LEAD,
-    ));
+    );
+    expect(check(90, EscalationLevel.TEAM_LEAD, Priority.P1, EscalationPolicy.demo())?.to).toBe(
+      EscalationLevel.SYS_ADMIN,
+    );
+    expect(check(120, EscalationLevel.SYS_ADMIN, Priority.P1, EscalationPolicy.demo())?.to).toBe(
+      EscalationLevel.IT_MANAGER,
+    );
+  });
   it('chainFactoryBuildsFourHandlersInOrder', () => {
     expect(
       [299, 300, 600, 1200].map((seconds) => check(seconds)?.to ?? EscalationLevel.TECHNICIAN),
@@ -83,8 +91,11 @@ it('formatsEscalationReasonsWithThresholdsAndDestination', () => {
     'P1 unacknowledged for 10 min (threshold 10 min) → System Administrator',
   );
   expect(check(1200)?.reason).toBe('P1 unacknowledged for 20 min (threshold 20 min) → IT Manager');
-  expect(check(21, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())?.reason).toBe(
-    'P1 unacknowledged for 21 s (threshold 20 s) → Team Lead',
+  expect(check(61, EscalationLevel.TECHNICIAN, Priority.P1, EscalationPolicy.demo())?.reason).toBe(
+    'P1 unacknowledged for 61 s (threshold 1 min) → Team Lead',
+  );
+  expect(check(91, EscalationLevel.TEAM_LEAD, Priority.P1, EscalationPolicy.demo())?.reason).toBe(
+    'P1 unacknowledged for 91 s (threshold 90 s) → System Administrator',
   );
 });
 
